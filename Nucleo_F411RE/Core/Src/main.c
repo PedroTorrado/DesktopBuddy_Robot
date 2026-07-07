@@ -879,17 +879,6 @@ int main(void)
                 int len = snprintf(tele_buf, sizeof(tele_buf), "TELEMETRY:%d,%d,%d,%d\n", sgp30_co2, sgp30_tvoc, distance, current_emotion);
                 HAL_StatusTypeDef status = HAL_UART_Transmit(&huart1, (uint8_t*)tele_buf, len, 100);
                 
-                // Print TX status to OLED for easy hardware troubleshooting
-                char tx_status[16];
-                if (status == HAL_OK) {
-                    snprintf(tx_status, sizeof(tx_status), "TX: OK      ");
-                } else if (status == HAL_BUSY) {
-                    snprintf(tx_status, sizeof(tx_status), "TX: BUSY    ");
-                } else {
-                    snprintf(tx_status, sizeof(tx_status), "TX: ERROR   ");
-                }
-                OLED_PrintText(4, 0, tx_status);
-                
                 // Also print to USART2 (Virtual COM Port) for PC serial debugging
                 printf("Nucleo UART TX Status: %d (0=OK, 1=BUSY, 2=ERROR), Distance: %d\r\n", status, distance);
             }
