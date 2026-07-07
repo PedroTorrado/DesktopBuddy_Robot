@@ -835,7 +835,10 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
     static uint32_t last_toggle_time = 0;
-        static uint32_t last_sgp_time = 0;
+        static uint32_t last_sgp_poll_time = 0;
+        static uint32_t last_telemetry_send_time = 0;
+        static uint16_t peak_co2 = 400;
+        static uint16_t peak_tvoc = 0;
         static uint8_t display_mode = 1;      // 0 = Telemetry, 1 = Dog Canvas
         static uint8_t last_pin_state = 1;
         static uint8_t dynamic_refresh_needed = 1; // Tracks if static screens need a redraw pass
@@ -869,10 +872,26 @@ int main(void)
                 dynamic_refresh_needed = 1;
             }
 
-            // Read Air Quality every 1 second
-            if (current_time - last_sgp_time >= 1000) {
-                SGP30_Measure(&sgp30_co2, &sgp30_tvoc);
-                last_sgp_time = current_time;
+            // Poll Air Quality every 1 second to capture fast transient odors
+            if (current_time - last_sgp_poll_time >= 1000) {
+                last_sgp_poll_time = current_time;
+                
+                uint16_t cur_co2 = 400;
+                uint16_t cur_tvoc = 0;
+                SGP30_Measure(&cur_co2, &cur_tvoc);
+                
+                // Update the peak values detected during this transmit window
+                if (cur_co2 > peak_co2) peak_co2 = cur_co2;
+                if (cur_tvoc > peak_tvoc) peak_tvoc = cur_tvoc;
+            }
+
+            // Transmit peak telemetry data to AWS/ESP32 every 5 seconds to stay inside Free Tier limits
+            if (current_time - last_telemetry_send_time >= 5000) {
+                last_telemetry_send_time = current_time;
+                
+                // Set the global variables for OLED screen rendering and debugging
+                sgp30_co2 = peak_co2;
+                sgp30_tvoc = peak_tvoc;
                 
                 // Transmit Telemetry over UART to ESP32
                 char tele_buf[64];
@@ -881,6 +900,10 @@ int main(void)
                 
                 // Also print to USART2 (Virtual COM Port) for PC serial debugging
                 printf("Nucleo UART TX Status: %d (0=OK, 1=BUSY, 2=ERROR), Distance: %d\r\n", status, distance);
+                
+                // Reset peak values for the next window
+                peak_co2 = 400;
+                peak_tvoc = 0;
             }
 
             pin_state = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
