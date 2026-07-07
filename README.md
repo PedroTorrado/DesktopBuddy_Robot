@@ -25,5 +25,3 @@ Please refer to the `docs/` folder for comprehensive setup instructions:
 3. Flash the ESP32 using the Arduino IDE.
 4. Build and flash the Nucleo using STM32CubeIDE.
 5. Refer to `docs/wiring_guide.md` for physical hardware connections.
-
-Enjoy your new desktop companion!
