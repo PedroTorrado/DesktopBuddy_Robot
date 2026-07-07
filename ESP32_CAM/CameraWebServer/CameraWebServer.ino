@@ -38,10 +38,6 @@
 
 #include "secrets.h"
 
-void startCameraServer();
-void setupLedFlash(int pin);
-
-
 WiFiClientSecure net;
 PubSubClient mqttClient(net);
 
@@ -66,33 +62,39 @@ void connectAWS() {
   }
 }
 
+// Globals for thread-safe MQTT publishing
+volatile bool newFaceDataReady = false;
+volatile int global_face_id = -2;
+volatile int global_face_x = 0;
+volatile int global_face_y = 0;
+
 void publishFaceData(int face_id, int x, int y) {
-  static bool wasFaceDetected = false;
+  // Transmit to Nucleo over Serial2 (since UART0/Serial is damaged)
+  Serial2.printf("FACE:%d,%d,%d\n", face_id, x, y);
 
-  // Bandwidth optimization: If no face is detected, only send the "Lost" message ONCE.
-  if (face_id == -2) {
-    if (wasFaceDetected) {
-      wasFaceDetected = false; // Just lost
-    } else {
-      return; // Already lost, stay quiet and save bandwidth!
-    }
-  } else {
-    wasFaceDetected = true; // Face is actively present
-  }
-
-  if (mqttClient.connected()) {
-    char payload[64];
-    snprintf(payload, sizeof(payload), "{\"face_id\": %d, \"x\": %d, \"y\": %d}", face_id, x, y);
-    mqttClient.publish(AWS_IOT_TOPIC, payload);
-  }
+  // This function is called by the Camera FreeRTOS task.
+  // DO NOT call mqttClient.publish() here, it causes socket crashes!
+  // Instead, hand it off to the main loop() task.
+  global_face_id = face_id;
+  global_face_x = x;
+  global_face_y = y;
+  newFaceDataReady = true;
 }
 
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Disable brownout detector to survive Wi-Fi power spikes
   
-  Serial.begin(115200);
+  Serial.begin(115200, SERIAL_8N1, 3, 1);
   Serial.setDebugOutput(true);
   Serial.println();
+
+  // Initialize Serial2 on alternative pins to bypass the dead U0R pin
+  // GPIO13 = RX2, GPIO12 = TX2
+  Serial2.begin(115200, SERIAL_8N1, 13, 12);
+
+  // Configure onboard red LED (GPIO33) as output for serial diagnostics
+  pinMode(33, OUTPUT);
+  digitalWrite(33, HIGH); // Turn off initially (Active Low)
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -126,7 +128,7 @@ void setup() {
   //                      for larger pre-allocated frame buffer.
   if(config.pixel_format == PIXFORMAT_JPEG){
     if(psramFound()){
-      config.jpeg_quality = 10;
+      config.jpeg_quality = 16;
       config.fb_count = 2;
       config.grab_mode = CAMERA_GRAB_LATEST;
     } else {
@@ -231,5 +233,86 @@ void loop() {
       mqttClient.loop();
     }
   }
+
+  // Safely publish face data from the main task
+  if (newFaceDataReady) {
+    newFaceDataReady = false;
+    static bool wasFaceDetected = false;
+    int f_id = global_face_id;
+    int f_x = global_face_x;
+    int f_y = global_face_y;
+
+    bool shouldPublish = false;
+
+    if (f_id == -2) {
+      // If we previously had a face, we want to publish the "lost" message exactly once
+      if (wasFaceDetected) {
+        wasFaceDetected = false;
+        shouldPublish = true; 
+      }
+    } else {
+      // Face actively detected, publish it!
+      wasFaceDetected = true;
+      shouldPublish = true;
+    }
+
+    if (shouldPublish) {
+      if (mqttClient.connected()) {
+        char payload[64];
+        snprintf(payload, sizeof(payload), "{\"face_id\": %d, \"x\": %d, \"y\": %d}", f_id, f_x, f_y);
+        mqttClient.publish(AWS_IOT_TOPIC, payload);
+      }
+    }
+  }
+
+  // Heartbeat blink to verify code is running and LED is on Pin 33
+  static uint32_t last_heartbeat = 0;
+  static bool ledState = true;
+  if (millis() - last_heartbeat >= 500) {
+    last_heartbeat = millis();
+    ledState = !ledState;
+    digitalWrite(33, ledState ? HIGH : LOW);
+  }
+
+  // Read Telemetry from Nucleo
+  if (Serial2.available()) {
+    digitalWrite(33, LOW); // Turn on red LED (active LOW) to show physical data reception
+    String incoming = Serial2.readStringUntil('\n');
+    digitalWrite(33, HIGH); // Turn off red LED
+    incoming.trim(); // Clean up any stray \r
+    
+    if (incoming.length() > 0) {
+      // Publish raw string to debug topic to see what the ESP32 is physically hearing!
+      if (mqttClient.connected()) {
+        char dbgPayload[128];
+        snprintf(dbgPayload, sizeof(dbgPayload), "{\"debug_raw\": \"%s\"}", incoming.c_str());
+        mqttClient.publish("esp32/face_tracker/debug", dbgPayload);
+      }
+    }
+
+    int telIdx = incoming.indexOf("TELEMETRY:");
+    if (telIdx != -1) {
+      int startIdx = telIdx + 10;
+      int nextComma = incoming.indexOf(',', startIdx);
+      if (nextComma != -1) {
+        int co2 = incoming.substring(startIdx, nextComma).toInt();
+        startIdx = nextComma + 1;
+        nextComma = incoming.indexOf(',', startIdx);
+        int tvoc = incoming.substring(startIdx, nextComma).toInt();
+        startIdx = nextComma + 1;
+        nextComma = incoming.indexOf(',', startIdx);
+        int dist = incoming.substring(startIdx, nextComma).toInt();
+        startIdx = nextComma + 1;
+        int emotion = incoming.substring(startIdx).toInt();
+
+        if (mqttClient.connected()) {
+          char payload[128];
+          snprintf(payload, sizeof(payload), "{\"co2\": %d, \"tvoc\": %d, \"distance\": %d, \"emotion\": %d}", co2, tvoc, dist, emotion);
+          mqttClient.publish(AWS_IOT_TOPIC, payload);
+        }
+      }
+    }
+  }
+
   delay(10);
 }

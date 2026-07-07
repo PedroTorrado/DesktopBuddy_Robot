@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DesktopBuddy Dashboard</title>
+    <!-- Google Fonts: Outfit and Space Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Animated Mesh Background -->
+    <div class="mesh-bg"></div>
+
+    <div class="dashboard-container">
+        <header class="glass-panel">
+            <h1>DesktopBuddy <span class="accent">Dashboard</span></h1>
+            <div class="status-indicator">
+                <div id="connection-dot" class="dot disconnected"></div>
+                <span id="connection-text">Disconnected</span>
+            </div>
+        </header>
+
+        <main>
+            <!-- Left Side: Radar and Face Tracking -->
+            <div class="column radar-column">
+                <div class="canvas-wrapper glass-panel">
+                    <canvas id="radarCanvas" width="640" height="480"></canvas>
+                    <div class="scanner"></div>
+                    <div class="grid-overlay"></div>
+                </div>
+                <div class="stats-panel">
+                    <div class="stat-box glass-panel interactive">
+                        <label>Face ID</label>
+                        <div id="stat-id" class="stat-value">--</div>
+                    </div>
+                    <div class="stat-box glass-panel interactive">
+                        <label>Target X</label>
+                        <div id="stat-x" class="stat-value">--</div>
+                    </div>
+                    <div class="stat-box glass-panel interactive">
+                        <label>Target Y</label>
+                        <div id="stat-y" class="stat-value">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Sensor Chart and Log -->
+            <div class="column data-column">
+                <div class="chart-wrapper glass-panel interactive">
+                    <h2>Live Air Quality</h2>
+                    <div class="chart-container">
+                        <canvas id="sensorChart"></canvas>
+                    </div>
+                </div>
+                <div class="stats-panel">
+                    <div class="stat-box glass-panel interactive">
+                        <label>CO2 (ppm)</label>
+                        <div id="stat-co2" class="stat-value">--</div>
+                    </div>
+                    <div class="stat-box glass-panel interactive">
+                        <label>TVOC (ppb)</label>
+                        <div id="stat-tvoc" class="stat-value">--</div>
+                    </div>
+                    <div class="stat-box glass-panel interactive">
+                        <label>Distance</label>
+                        <div id="stat-dist" class="stat-value">--</div>
+                    </div>
+                </div>
+                <aside class="log-section glass-panel">
+                    <h2>Telemetry Log</h2>
+                    <div id="log-container" class="log-container"></div>
+                </aside>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

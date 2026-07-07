@@ -4,7 +4,7 @@
 !.env.example
 
 # Arduino Secrets
-ESP32_CAM/secrets.h
+**/secrets.h
 
 # STM32 Build Files
 Nucleo_F411RE/Debug/
@@ -18,3 +18,14 @@ Nucleo_F411RE/Release/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Node.js
+node_modules/
+package-lock.json
+
+# Credentials & Certificates
+certs/
+*.pem
+*.crt
+*.key
+*.der

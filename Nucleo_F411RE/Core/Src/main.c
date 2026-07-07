@@ -76,9 +76,10 @@ RobotEmotion current_emotion = EMOTION_HAPPY;
 uint32_t last_bop_time = 0;
 
 void DWT_Delay_us(uint32_t us) {
-    uint32_t startTick = DWT->CYCCNT;
-    uint32_t delayTicks = us * (SystemCoreClock / 1000000);
-    while (DWT->CYCCNT - startTick < delayTicks);
+    // Software delay calibrated for 16MHz HSI clock
+    // us * 3 is roughly 1 microsecond of delay including loop overhead
+    volatile uint32_t delay = us * 3;
+    while (delay--);
 }
 
 int HCSR04_Read(void) {
@@ -88,20 +89,23 @@ int HCSR04_Read(void) {
     DWT_Delay_us(10);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
     
-    uint32_t timeout = DWT->CYCCNT;
-    uint32_t timeoutTicks = 20000 * (SystemCoreClock / 1000000);
-    
+    // Software timeout loop instead of DWT timer
+    uint32_t timeout = 0;
     while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7) == GPIO_PIN_RESET) {
-        if (DWT->CYCCNT - timeout > timeoutTicks) return -1;
+        if (timeout++ > 50000) return -1;
     }
     
-    uint32_t start_time = DWT->CYCCNT;
+    uint32_t pulse_width = 0;
     while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_7) == GPIO_PIN_SET) {
-        if (DWT->CYCCNT - start_time > timeoutTicks) return -1;
+        pulse_width++;
+        // Very short delay for calibration
+        volatile uint32_t delay = 2;
+        while(delay--);
+        if (pulse_width > 60000) return -1;
     }
     
-    uint32_t elapsed_us = (DWT->CYCCNT - start_time) / (SystemCoreClock / 1000000);
-    return elapsed_us / 58;
+    // Calibrated divisor for software loop
+    return pulse_width / 25;
 }
 
 void SGP30_Init(void) {
@@ -869,6 +873,25 @@ int main(void)
             if (current_time - last_sgp_time >= 1000) {
                 SGP30_Measure(&sgp30_co2, &sgp30_tvoc);
                 last_sgp_time = current_time;
+                
+                // Transmit Telemetry over UART to ESP32
+                char tele_buf[64];
+                int len = snprintf(tele_buf, sizeof(tele_buf), "TELEMETRY:%d,%d,%d,%d\n", sgp30_co2, sgp30_tvoc, distance, current_emotion);
+                HAL_StatusTypeDef status = HAL_UART_Transmit(&huart1, (uint8_t*)tele_buf, len, 100);
+                
+                // Print TX status to OLED for easy hardware troubleshooting
+                char tx_status[16];
+                if (status == HAL_OK) {
+                    snprintf(tx_status, sizeof(tx_status), "TX: OK      ");
+                } else if (status == HAL_BUSY) {
+                    snprintf(tx_status, sizeof(tx_status), "TX: BUSY    ");
+                } else {
+                    snprintf(tx_status, sizeof(tx_status), "TX: ERROR   ");
+                }
+                OLED_PrintText(4, 0, tx_status);
+                
+                // Also print to USART2 (Virtual COM Port) for PC serial debugging
+                printf("Nucleo UART TX Status: %d (0=OK, 1=BUSY, 2=ERROR), Distance: %d\r\n", status, distance);
             }
 
             pin_state = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
