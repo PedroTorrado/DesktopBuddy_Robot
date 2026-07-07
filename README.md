@@ -11,11 +11,8 @@ An autonomous, reactive, and expressive robotic companion built with an ESP32-CA
 ## Expressive Personalities
 DesktopBuddy uses its SSD1306 OLED display to express its emotions dynamically based on sensor inputs:
 
-<div align="center">
-
 ### HAPPY (Tracking)
-
-<pre>
+```text
                    ▄█▄                     ▄█▄
                  ▄██▀██▄                 ▄██▀██▄
                ▄██▀   ▀██              ▄██▀   ▀██
@@ -28,11 +25,10 @@ DesktopBuddy uses its SSD1306 OLED display to express its emotions dynamically b
                             ▀██▄ ▄██▀
                               ▀███▀
                                 ▀
-</pre>
+```
 
 ### ANGRY (Obstacle Alert)
-
-<pre>
+```text
                         ▄█              █▄
                       ▄█▀               ▀██▄
                     ▄█▀                   ▀██▄
@@ -45,11 +41,10 @@ DesktopBuddy uses its SSD1306 OLED display to express its emotions dynamically b
                ██████████              ██████████
 
                                    ██████████
-</pre>
+```
 
 ### DIZZY (Jerk/Bump)
-
-<pre>
+```text
                ▀▄        ▄             ▀▄        ▄
                 ▀▄      █               ▀▄      █
                  ▀▄    █                 ▀▄    █
@@ -64,9 +59,7 @@ DesktopBuddy uses its SSD1306 OLED display to express its emotions dynamically b
 
                               ██   ██
                            ███  ███
-</pre>
-
-</div>
+```
 
 ## Documentation
 Please refer to the `docs/` folder for comprehensive setup instructions:
