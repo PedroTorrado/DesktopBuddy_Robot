@@ -10,8 +10,8 @@ The ESP32-CAM acts as the vision coprocessor and communicates with the Nucleo ma
 
 | ESP32-CAM Pin | Nucleo F411RE Pin | Function |
 | :--- | :--- | :--- |
-| U0T (TX) | **PA10** (UART RX) | Serial Data to Nucleo |
-| U0R (RX) | **PA9** (UART TX) | Serial Data to ESP32 |
+| U0T (TX) | **PA10** (UART RX) | Serial Data to Nucleo (Arduino D2) |
+| U0R (RX) | **PB6** (UART TX) | Serial Data to ESP32 (Arduino D10) |
 | Pin 14 | **PC8** | Wake-up / Interrupt Signal |
 | GND | GND | Common Ground |
 

@@ -25,17 +25,21 @@ DesktopBuddy utilizes a dual-microcontroller architecture to separate heavy netw
 graph TD
     subgraph ESP32-CAM [Vision Coprocessor]
         CAM[Camera Module] --> ML[Face Detection Engine]
-        ML --> WIFI[AWS IoT MQTT]
-        ML --> UART_TX[UART TX]
+        ML -->|FACE:ID,X,Y| UART_TX0[UART0 TX - GPIO1/U0T]
+        
+        UART_RX0[UART0 RX - GPIO3/U0R] -->|Raw Telemetry| AWS[AWS IoT Core MQTT]
     end
 
     subgraph STM32 Nucleo [Master Controller]
-        UART_RX[UART RX Interrupt] --> PID[PI Tracking Loop]
+        UART_RX1[USART1 RX - PA10/D2] --> PID[PI Tracking Loop]
         PID --> PWM[TIM3 Motor PWM]
         
-        SENSORS[ADXL345 / HC-SR04] --> STATE[Emotion State Machine]
+        SENSORS[ADXL345 / SGP30 / HC-SR04] --> STATE[Emotion State Machine]
         STATE --> OLED[SSD1306 Display]
+        
+        STATE & SENSORS -->|TELEMETRY:co2,tvoc,dist,emotion| UART_TX1[USART1 TX - PB6/D10]
     end
 
-    UART_TX -- "FACE:ID,X,Y" --> UART_RX
+    UART_TX0 -->|Physical Wire| UART_RX1
+    UART_TX1 -->|Physical Wire| UART_RX0
 ```
