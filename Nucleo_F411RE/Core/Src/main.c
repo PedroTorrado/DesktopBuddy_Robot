@@ -898,9 +898,6 @@ int main(void)
             // Everything inside here executes exactly once every 200ms
             if (current_time - last_toggle_time >= 200)
             {
-                if (pin_state == 1) {
-                    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-                }
 
                 if (dev_id == 0xE5) {
                     // Keep reading sensor data dynamically regardless of display view state
@@ -998,8 +995,32 @@ int main(void)
                 last_toggle_time = current_time;
             }
 
-            if (pin_state == 0) {
-                HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+            // --- EMOTION-BASED USER LED PATTERNS ---
+            static uint32_t last_led_time = 0;
+            uint32_t led_interval = 500; // Default: slow 500ms blink
+            
+            if (current_emotion == EMOTION_DIZZY) {
+                led_interval = 50;  // Dizzy ➔ Rapid 50ms strobe!
+            } else if (current_emotion == EMOTION_ANGRY) {
+                led_interval = 100; // Angry ➔ Fast 100ms warning flash!
+            } else if (current_emotion == EMOTION_HAPPY) {
+                // Happy (Target Locked) ➔ Solid ON!
+                HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+                led_interval = 0; // Disable toggling
+            } else {
+                // Searching/Idle ➔ Slow double-blink (heartbeat: 100ms on, 100ms off, 100ms on, 700ms off)
+                uint32_t cycle = current_time % 1000;
+                if (cycle < 100 || (cycle >= 200 && cycle < 300)) {
+                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+                } else {
+                    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+                }
+                led_interval = 0; // Disable toggling
+            }
+            
+            if (led_interval > 0 && current_time - last_led_time >= led_interval) {
+                last_led_time = current_time;
+                HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
             }
 		}
     /* USER CODE END WHILE */
