@@ -836,7 +836,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
     static uint32_t last_toggle_time = 0;
         static uint32_t last_sgp_time = 0;
-        static uint8_t display_mode = 0;      // 0 = Telemetry, 1 = Dog Canvas
+        static uint8_t display_mode = 1;      // 0 = Telemetry, 1 = Dog Canvas
         static uint8_t last_pin_state = 1;
         static uint8_t dynamic_refresh_needed = 1; // Tracks if static screens need a redraw pass
         static RobotEmotion last_rendered_emotion = EMOTION_HAPPY;

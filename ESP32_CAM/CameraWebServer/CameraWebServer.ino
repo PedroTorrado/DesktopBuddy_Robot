@@ -265,13 +265,30 @@ void loop() {
     }
   }
 
-  // Heartbeat blink to verify code is running and LED is on Pin 33
-  static uint32_t last_heartbeat = 0;
-  static bool ledState = true;
-  if (millis() - last_heartbeat >= 500) {
-    last_heartbeat = millis();
-    ledState = !ledState;
-    digitalWrite(33, ledState ? HIGH : LOW);
+  // Exciting status-based LED patterns (GPIO33 is active LOW)
+  uint32_t now = millis();
+  if (!mqttClient.connected()) {
+    // AWS Disconnected -> Rapid Warning Blink (100ms on, 100ms off)
+    static uint32_t last_warning_blink = 0;
+    if (now - last_warning_blink >= 100) {
+      last_warning_blink = now;
+      digitalWrite(33, !digitalRead(33));
+    }
+  } else if (global_face_id >= 0) {
+    // Target Locked (Face Tracking) -> Solid ON (Excited state)
+    digitalWrite(33, LOW);
+  } else {
+    // Connected but Searching -> Double-Blink heartbeat (100ms on, 100ms off, 100ms on, 700ms off)
+    int cycleTime = now % 1000;
+    if (cycleTime < 100) {
+      digitalWrite(33, LOW); // 1st blink ON
+    } else if (cycleTime < 200) {
+      digitalWrite(33, HIGH); // OFF
+    } else if (cycleTime < 300) {
+      digitalWrite(33, LOW); // 2nd blink ON
+    } else {
+      digitalWrite(33, HIGH); // OFF
+    }
   }
 
   // Read Telemetry from Nucleo
