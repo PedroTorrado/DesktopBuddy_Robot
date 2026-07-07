@@ -8,6 +8,75 @@ An autonomous, reactive, and expressive robotic companion built with an ESP32-CA
 *   **Sensory Suite**: Monitors room air quality (SGP30) and avoids collisions with ultrasonic sonar (HC-SR04).
 *   **Cloud Telemetry**: Streams data to AWS IoT Core over MQTT.
 
+## Expressive Personalities
+DesktopBuddy uses its SSD1306 OLED display to express its emotions dynamically based on sensor inputs:
+
+<table>
+<tr>
+<td><b>HAPPY (Tracking)</b></td>
+<td><b>ANGRY (Obstacle Alert)</b></td>
+<td><b>DIZZY (Jerk/Bump)</b></td>
+</tr>
+<tr>
+<td valign="top">
+
+```text
+                   ▄█▄                     ▄█▄
+                 ▄██▀██▄                 ▄██▀██▄
+               ▄██▀   ▀██              ▄██▀   ▀██
+               █▀       ▀              █▀       ▀
+
+                      █▄                 ▄
+                      ▀██▄             ▄██
+                        ▀██▄         ▄██▀
+                          ▀██▄     ▄██▀
+                            ▀██▄ ▄██▀
+                              ▀███▀
+                                ▀
+```
+
+</td>
+<td valign="top">
+
+```text
+                        ▄█              █▄
+                      ▄█▀               ▀██▄
+                    ▄█▀                   ▀██▄
+                  ▄█▀                       ▀██▄
+                ▄█▀                           ▀██▄
+               ██████████              ███████████
+               ██████████              ██████████
+               ██████████              ██████████
+               ██████████              ██████████
+               ██████████              ██████████
+
+                                   ██████████
+```
+
+</td>
+<td valign="top">
+
+```text
+               ▀▄        ▄             ▀▄        ▄
+                ▀▄      █               ▀▄      █
+                 ▀▄    █                 ▀▄    █
+                  ▀▄  █                   ▀▄  █
+                   ▀▄█                     ▀▄█
+                    █▄                      █▄
+                   █ ▀▄                    █ ▀▄
+                  █   ▀▄                  █   ▀▄
+                 █     ▀▄                █     ▀▄
+                █       ▀▄              █       ▀▄
+               ▀                       ▀
+
+                              ██   ██
+                           ███  ███
+```
+
+</td>
+</tr>
+</table>
+
 ## Documentation
 Please refer to the `docs/` folder for comprehensive setup instructions:
 1.  **[System Architecture](docs/system_architecture.md)**: Overview of the dual-microcontroller setup and data flow.
