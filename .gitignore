@@ -1,0 +1,20 @@
+# Environments
+.env
+.env.*
+!.env.example
+
+# Arduino Secrets
+ESP32_CAM/secrets.h
+
+# STM32 Build Files
+Nucleo_F411RE/Debug/
+Nucleo_F411RE/Release/
+**/*.o
+**/*.elf
+**/*.bin
+**/*.hex
+**/*.map
+
+# OS files
+.DS_Store
+Thumbs.db
