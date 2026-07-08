@@ -196,6 +196,11 @@ socket.on('telemetry', (dataStr) => {
                 lastUpdateTime = Date.now();
                 statX.textContent = targetX;
                 statY.textContent = targetY;
+                
+                // Instantly update dashboard face to smiling (HAPPY) when target is active on radar
+                robotFace.className = 'robot-face happy';
+                emotionBadge.textContent = 'HAPPY';
+                emotionBadge.className = 'emotion-badge happy';
             } else {
                 hasTarget = false;
                 statX.textContent = '--';
