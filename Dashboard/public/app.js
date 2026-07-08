@@ -163,13 +163,7 @@ function setViewMode(mode) {
 btnLive.addEventListener('click', () => setViewMode('live'));
 btnAll.addEventListener('click', () => setViewMode('all'));
 
-// UI Select for Refresh Rate
-const selectRate = document.getElementById('select-rate');
-selectRate.addEventListener('change', (e) => {
-    const rate = parseInt(e.target.value, 10);
-    socket.emit('set_rate', rate);
-    addLog(`Requested refresh rate: ${rate/1000}s`, true);
-});
+
 
 // Socket events
 socket.on('connect', () => {
