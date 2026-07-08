@@ -11,6 +11,8 @@ const statY = document.getElementById('stat-y');
 const statCo2 = document.getElementById('stat-co2');
 const statTvoc = document.getElementById('stat-tvoc');
 const statDist = document.getElementById('stat-dist');
+const emotionBadge = document.getElementById('emotion-badge');
+const robotFace = document.getElementById('robot-face');
 
 // Canvas Setup for Radar
 const canvas = document.getElementById('radarCanvas');
@@ -233,6 +235,24 @@ socket.on('telemetry', (dataStr) => {
                 sensorChart.data.datasets[1].data = [...allHistory.tvoc];
             }
             sensorChart.update();
+        }
+
+        // Handle Emotion Data
+        if (data.emotion !== undefined) {
+            const emotionsMap = {
+                0: { text: 'HAPPY', class: 'happy' },
+                1: { text: 'ANGRY', class: 'angry' },
+                2: { text: 'SEARCHING', class: 'searching' },
+                3: { text: 'DIZZY', class: 'dizzy' }
+            };
+            const currentEmo = emotionsMap[data.emotion] || emotionsMap[0];
+            
+            // Update class of face container
+            robotFace.className = `robot-face ${currentEmo.class}`;
+            
+            // Update text and class of badge
+            emotionBadge.textContent = currentEmo.text;
+            emotionBadge.className = `emotion-badge ${currentEmo.class}`;
         }
 
     } catch (e) {

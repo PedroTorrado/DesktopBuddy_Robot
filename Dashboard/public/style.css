@@ -376,3 +376,207 @@ canvas {
     background: #0f172a;
     color: var(--text-primary);
 }
+
+/* Robot Face Panel Styling */
+.face-panel {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.face-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.face-header h2 {
+    font-size: 1.2rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.emotion-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+}
+
+.emotion-badge.happy {
+    background-color: rgba(56, 189, 248, 0.15);
+    color: var(--accent-color);
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+.emotion-badge.angry {
+    background-color: rgba(244, 63, 94, 0.15);
+    color: var(--danger-color);
+    box-shadow: 0 0 10px rgba(244, 63, 94, 0.2);
+}
+
+.emotion-badge.searching {
+    background-color: rgba(234, 179, 8, 0.15);
+    color: #eab308;
+    box-shadow: 0 0 10px rgba(234, 179, 8, 0.2);
+}
+
+.emotion-badge.dizzy {
+    background-color: rgba(168, 85, 247, 0.15);
+    color: #a855f7;
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.2);
+}
+
+.face-display-area {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 120px;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    overflow: hidden;
+}
+
+.robot-face {
+    position: relative;
+    width: 160px;
+    height: 80px;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding: 0 10px;
+    transition: all 0.3s ease;
+}
+
+.robot-face .eye {
+    width: 24px;
+    height: 24px;
+    background-color: var(--accent-color);
+    border-radius: 50%;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 12px var(--accent-color);
+    position: relative;
+}
+
+.robot-face .mouth-container {
+    position: absolute;
+    bottom: 5px;
+    width: 100%;
+    height: 25px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.robot-face .mouth {
+    width: 32px;
+    height: 12px;
+    border-bottom: 4px solid var(--accent-color);
+    border-radius: 0 0 16px 16px;
+    transition: all 0.3s ease;
+}
+
+/* Happy override */
+.robot-face.happy .eye {
+    background-color: var(--accent-color);
+    box-shadow: 0 0 12px var(--accent-color);
+}
+.robot-face.happy .mouth {
+    border-bottom: 4px solid var(--accent-color);
+}
+
+/* Angry override */
+.robot-face.angry .eye {
+    background-color: var(--danger-color);
+    box-shadow: 0 0 12px var(--danger-color);
+}
+.robot-face.angry .eye::before {
+    content: '';
+    position: absolute;
+    top: -4px;
+    width: 26px;
+    height: 4px;
+    background-color: var(--danger-color);
+}
+.robot-face.angry .eye.left-eye::before {
+    left: -2px;
+    transform: rotate(20deg);
+}
+.robot-face.angry .eye.right-eye::before {
+    right: -2px;
+    transform: rotate(-20deg);
+}
+.robot-face.angry .mouth {
+    width: 28px;
+    height: 10px;
+    border-bottom: none;
+    border-top: 4px solid var(--danger-color);
+    border-radius: 12px 12px 0 0;
+    transform: translateY(6px);
+}
+
+/* Searching override */
+.robot-face.searching .eye {
+    background-color: #eab308;
+    box-shadow: 0 0 12px #eab308;
+    animation: searchLook 3s ease-in-out infinite;
+}
+@keyframes searchLook {
+    0%, 100% { transform: translateX(0); }
+    33% { transform: translateX(-8px); }
+    66% { transform: translateX(8px); }
+}
+.robot-face.searching .mouth {
+    width: 24px;
+    height: 4px;
+    background-color: #eab308;
+    border: none;
+    border-radius: 2px;
+    transform: translateY(6px);
+}
+
+/* Dizzy override */
+.robot-face.dizzy .eye {
+    background-color: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    width: 24px;
+    height: 24px;
+    animation: dizzySpin 1.5s linear infinite;
+}
+@keyframes dizzySpin {
+    100% { transform: rotate(360deg); }
+}
+.robot-face.dizzy .eye::before, .robot-face.dizzy .eye::after {
+    content: '';
+    position: absolute;
+    top: 10px;
+    left: 0;
+    width: 24px;
+    height: 4px;
+    background-color: #a855f7;
+    box-shadow: 0 0 8px #a855f7;
+}
+.robot-face.dizzy .eye::before { transform: rotate(45deg); }
+.robot-face.dizzy .eye::after { transform: rotate(-45deg); }
+.robot-face.dizzy .mouth {
+    width: 18px;
+    height: 18px;
+    border: 4px solid #a855f7;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #a855f7;
+    transform: translateY(4px);
+    animation: dizzyMouth 1s ease-in-out infinite alternate;
+}
+@keyframes dizzyMouth {
+    0% { transform: translateY(4px) scale(0.9); }
+    100% { transform: translateY(4px) scale(1.1); }
+}
