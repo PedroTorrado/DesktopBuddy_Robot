@@ -335,8 +335,8 @@ void setup() {
       config.fb_count = 2;
       config.grab_mode = CAMERA_GRAB_LATEST;
     } else {
-      // Limit the frame size when PSRAM is not available
-      config.frame_size = FRAMESIZE_SVGA;
+      // Limit the frame size when PSRAM is not available (QVGA is perfect for DRAM and face detection)
+      config.frame_size = FRAMESIZE_QVGA;
       config.fb_location = CAMERA_FB_IN_DRAM;
     }
   } else {
