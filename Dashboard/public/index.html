@@ -52,7 +52,17 @@
             <!-- Right Side: Sensor Chart and Log -->
             <div class="column data-column">
                 <div class="chart-wrapper glass-panel interactive">
-                    <h2>Live Air Quality</h2>
+                    <div class="chart-header">
+                        <h2>Air Quality</h2>
+                        <div class="chart-controls">
+                            <select id="select-rate" class="control-select">
+                                <option value="5000" selected>Rate: 5s (Eco)</option>
+                                <option value="1000">Rate: 1s (Turbo)</option>
+                            </select>
+                            <button id="btn-live" class="control-btn active">Live</button>
+                            <button id="btn-all" class="control-btn">All Time</button>
+                        </div>
+                    </div>
                     <div class="chart-container">
                         <canvas id="sensorChart"></canvas>
                     </div>

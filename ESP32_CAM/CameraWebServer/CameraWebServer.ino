@@ -37,9 +37,214 @@
 #include "camera_pins.h"
 
 #include "secrets.h"
+#include "FS.h"
+#include "SD_MMC.h"
+#include <Preferences.h>
+
+#include "app_httpd.h"
+
+struct WiFiCreds {
+  String ssid;
+  String password;
+};
+
+WiFiCreds wifiList[10];
+int wifiCount = 0;
+Preferences prefs;
+String lastSSID = "";
+String lastPassword = "";
+
+void loadWiFiFromSD() {
+  Serial.println("Initializing SD Card in 1-bit mode...");
+  if (!SD_MMC.begin("/sdcard", true)) {
+    Serial.println("SD Card mount failed. Using fallback credentials.");
+    return;
+  }
+
+  File file = SD_MMC.open("/wifi.txt");
+  if (!file) {
+    Serial.println("Failed to open /wifi.txt. Using fallback credentials.");
+    SD_MMC.end();
+    return;
+  }
+
+  Serial.println("Parsing /wifi.txt...");
+  wifiCount = 0;
+  while (file.available() && wifiCount < 10) {
+    String line = file.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0 || line.startsWith("#")) continue;
+    
+    int commaIdx = line.indexOf(',');
+    if (commaIdx != -1) {
+      String s = line.substring(0, commaIdx);
+      String p = line.substring(commaIdx + 1);
+      s.trim();
+      p.trim();
+      if (s.length() > 0) {
+        wifiList[wifiCount].ssid = s;
+        wifiList[wifiCount].password = p;
+        wifiCount++;
+      }
+    }
+  }
+  file.close();
+  SD_MMC.end();
+  Serial.printf("Parsed %d WiFi credentials from SD card.\n", wifiCount);
+}
+
+void loadLastWiFi() {
+  prefs.begin("wifi-store", false);
+  lastSSID = prefs.getString("last-ssid", "");
+  lastPassword = prefs.getString("last-pass", "");
+  prefs.end();
+}
+
+void saveLastWiFi(String s, String p) {
+  prefs.begin("wifi-store", false);
+  prefs.putString("last-ssid", s);
+  prefs.putString("last-pass", p);
+  prefs.end();
+}
+
+void sendWiFiListToNucleo() {
+  if (wifiCount == 0) {
+    Serial.printf("WIFILIST:%s\n", ssid);
+    return;
+  }
+  
+  String msg = "WIFILIST:";
+  for (int i = 0; i < wifiCount; i++) {
+    msg += wifiList[i].ssid;
+    if (i < wifiCount - 1) {
+      msg += ",";
+    }
+  }
+  msg += "\n";
+  Serial.print(msg);
+}
+
+void connectWiFiOnBoot() {
+  loadWiFiFromSD();
+  loadLastWiFi();
+
+  if (lastSSID.length() > 0) {
+    Serial.printf("Connecting to last used WiFi: %s\n", lastSSID.c_str());
+    Serial.printf("WIFISTATUS:CONNECTING,%s\n", lastSSID.c_str());
+    WiFi.begin(lastSSID.c_str(), lastPassword.c_str());
+    
+    int retries = 20;
+    while (WiFi.status() != WL_CONNECTED && retries > 0) {
+      delay(500);
+      Serial.print(".");
+      retries--;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\nWiFi connected to last used!");
+      Serial.println("WIFISTATUS:CONNECTED");
+      return;
+    }
+    Serial.println("\nFailed to connect to last used WiFi.");
+  }
+
+  for (int i = 0; i < wifiCount; i++) {
+    if (wifiList[i].ssid == lastSSID) continue;
+    
+    Serial.printf("Trying SD WiFi: %s\n", wifiList[i].ssid.c_str());
+    Serial.printf("WIFISTATUS:CONNECTING,%s\n", wifiList[i].ssid.c_str());
+    WiFi.begin(wifiList[i].ssid.c_str(), wifiList[i].password.c_str());
+    
+    int retries = 20;
+    while (WiFi.status() != WL_CONNECTED && retries > 0) {
+      delay(500);
+      Serial.print(".");
+      retries--;
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\nWiFi connected to SD list entry!");
+      Serial.println("WIFISTATUS:CONNECTED");
+      saveLastWiFi(wifiList[i].ssid, wifiList[i].password);
+      return;
+    }
+    Serial.println("\nFailed.");
+  }
+
+  Serial.printf("Trying compiled fallback WiFi: %s\n", ssid);
+  Serial.printf("WIFISTATUS:CONNECTING,%s\n", ssid);
+  WiFi.begin(ssid, password);
+  int retries = 20;
+  while (WiFi.status() != WL_CONNECTED && retries > 0) {
+    delay(500);
+    Serial.print(".");
+    retries--;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi connected to compiled fallback!");
+    Serial.println("WIFISTATUS:CONNECTED");
+    saveLastWiFi(ssid, password);
+  } else {
+    Serial.println("\nAll WiFi connections failed.");
+    Serial.println("WIFISTATUS:FAILED");
+  }
+}
+
+void connectToSelectedWiFi(int idx) {
+  if (idx < 0 || idx >= wifiCount) {
+    Serial.println("Invalid WiFi index selected.");
+    Serial.println("WIFISTATUS:FAILED");
+    return;
+  }
+  
+  String selected_ssid = wifiList[idx].ssid;
+  String selected_pass = wifiList[idx].password;
+  
+  Serial.printf("Connecting to requested WiFi: %s\n", selected_ssid.c_str());
+  Serial.printf("WIFISTATUS:CONNECTING,%s\n", selected_ssid.c_str());
+  
+  WiFi.disconnect();
+  WiFi.begin(selected_ssid.c_str(), selected_pass.c_str());
+  
+  int retries = 20;
+  while (WiFi.status() != WL_CONNECTED && retries > 0) {
+    delay(500);
+    Serial.print(".");
+    retries--;
+  }
+  
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi connected to selected!");
+    Serial.println("WIFISTATUS:CONNECTED");
+    saveLastWiFi(selected_ssid, selected_pass);
+  } else {
+    Serial.println("\nFailed to connect to selected WiFi.");
+    Serial.println("WIFISTATUS:FAILED");
+  }
+}
 
 WiFiClientSecure net;
 PubSubClient mqttClient(net);
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  char message[length + 1];
+  memcpy(message, payload, length);
+  message[length] = '\0';
+  
+  Serial.printf("[MQTT RX] Topic: %s, Message: %s\n", topic, message);
+  
+  int rateIdx = String(message).indexOf("refresh_rate");
+  if (rateIdx != -1) {
+    int colonIdx = String(message).indexOf(':', rateIdx);
+    if (colonIdx != -1) {
+      int rateVal = String(message).substring(colonIdx + 1).toInt();
+      if (rateVal >= 500 && rateVal <= 10000) {
+        Serial.printf("SETINTERVAL:%d\n", rateVal);
+      }
+    }
+  }
+}
 
 void connectAWS() {
   if (WiFi.status() != WL_CONNECTED) return;
@@ -50,12 +255,14 @@ void connectAWS() {
     net.setCertificate(AWS_CERT_CRT);
     net.setPrivateKey(AWS_CERT_PRIVATE);
     mqttClient.setServer(AWS_IOT_ENDPOINT, AWS_IOT_PORT);
+    mqttClient.setCallback(mqttCallback);
     certsConfigured = true;
   }
 
   Serial.println("Attempting to connect to AWS IoT...");
   if (mqttClient.connect(AWS_IOT_CLIENT_ID)) {
     Serial.println("Connected to AWS IoT successfully!");
+    mqttClient.subscribe("esp32/face_tracker/control");
   } else {
     Serial.print("AWS IoT connection failed, rc=");
     Serial.println(mqttClient.state());
@@ -69,8 +276,8 @@ volatile int global_face_x = 0;
 volatile int global_face_y = 0;
 
 void publishFaceData(int face_id, int x, int y) {
-  // Transmit to Nucleo over Serial2 (since UART0/Serial is damaged)
-  Serial2.printf("FACE:%d,%d,%d\n", face_id, x, y);
+  // Transmit to Nucleo over Serial (since UART0/Serial is damaged)
+  Serial.printf("FACE:%d,%d,%d\n", face_id, x, y);
 
   // This function is called by the Camera FreeRTOS task.
   // DO NOT call mqttClient.publish() here, it causes socket crashes!
@@ -87,10 +294,6 @@ void setup() {
   Serial.begin(115200, SERIAL_8N1, 3, 1);
   Serial.setDebugOutput(true);
   Serial.println();
-
-  // Initialize Serial2 on alternative pins to bypass the dead U0R pin
-  // GPIO13 = RX2, GPIO12 = TX2
-  Serial2.begin(115200, SERIAL_8N1, 13, 12);
 
   // Configure onboard red LED (GPIO33) as output for serial diagnostics
   pinMode(33, OUTPUT);
@@ -182,25 +385,31 @@ void setup() {
   setupLedFlash(LED_GPIO_NUM);
 #endif
 
-  WiFi.begin(ssid, password);
+  connectWiFiOnBoot();
   WiFi.setSleep(false);
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  if (WiFi.status() == WL_CONNECTED) {
+    // Sync time via NTP. This is REQUIRED for AWS IoT Core so WiFiClientSecure can validate the TLS certificate expiration date!
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+    Serial.print("Syncing time");
+    time_t now_t = time(nullptr);
+    int time_retries = 20; // Max 10 seconds wait
+    while (now_t < 100000 && time_retries > 0) { 
+      delay(500);
+      Serial.print(".");
+      now_t = time(nullptr);
+      time_retries--;
+    }
+    if (now_t >= 100000) {
+      Serial.println("\nTime synced successfully!");
+    } else {
+      Serial.println("\nTime sync timed out!");
+    }
   }
-  Serial.println("WiFi connected");
 
-  // Sync time via NTP. This is REQUIRED for AWS IoT Core so WiFiClientSecure can validate the TLS certificate expiration date!
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
-  Serial.print("Syncing time");
-  time_t now = time(nullptr);
-  while (now < 100000) { 
-    delay(500);
-    Serial.print(".");
-    now = time(nullptr);
-  }
-  Serial.println("\nTime synced successfully!");
+  // Allow Nucleo to start up, then send the parsed WiFi SSIDs
+  delay(1000);
+  sendWiFiListToNucleo();
 
   // Blink LED at a low brightness to signal connection
   const int safe_brightness = 2;
@@ -275,13 +484,23 @@ void loop() {
   }
 
   // Read Telemetry from Nucleo
-  if (Serial2.available()) {
+  if (Serial.available()) {
     digitalWrite(33, LOW); // Turn on red LED (active LOW) to show physical data reception
-    String incoming = Serial2.readStringUntil('\n');
+    String incoming = Serial.readStringUntil('\n');
     digitalWrite(33, HIGH); // Turn off red LED
     incoming.trim(); // Clean up any stray \r
     
     if (incoming.length() > 0) {
+      if (incoming.startsWith("REQWIFILIST")) {
+        Serial.printf("[ESP32 DEBUG] Received REQWIFILIST. wifiCount = %d. Sending list...\n", wifiCount);
+        sendWiFiListToNucleo();
+      } else if (incoming.startsWith("SELWIFI:")) {
+        int idx = incoming.substring(8).toInt();
+        connectToSelectedWiFi(idx);
+      } else if (incoming.startsWith("PING")) {
+        Serial.println("PONG");
+      }
+
       // Publish raw string to debug topic to see what the ESP32 is physically hearing!
       if (mqttClient.connected()) {
         char dbgPayload[128];

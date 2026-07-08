@@ -125,6 +125,52 @@ const sensorChart = new Chart(ctxChart, {
     }
 });
 
+// Historical Data Store
+const allHistory = {
+    labels: [],
+    co2: [],
+    tvoc: []
+};
+let viewMode = 'live'; // 'live' or 'all'
+
+// UI Toggle Buttons for Chart Range
+const btnLive = document.getElementById('btn-live');
+const btnAll = document.getElementById('btn-all');
+
+function setViewMode(mode) {
+    if (viewMode === mode) return;
+    viewMode = mode;
+    
+    if (mode === 'live') {
+        btnLive.classList.add('active');
+        btnAll.classList.remove('active');
+        
+        const startIdx = Math.max(0, allHistory.labels.length - maxDataPoints);
+        sensorChart.data.labels = allHistory.labels.slice(startIdx);
+        sensorChart.data.datasets[0].data = allHistory.co2.slice(startIdx);
+        sensorChart.data.datasets[1].data = allHistory.tvoc.slice(startIdx);
+    } else {
+        btnAll.classList.add('active');
+        btnLive.classList.remove('active');
+        
+        sensorChart.data.labels = [...allHistory.labels];
+        sensorChart.data.datasets[0].data = [...allHistory.co2];
+        sensorChart.data.datasets[1].data = [...allHistory.tvoc];
+    }
+    sensorChart.update();
+}
+
+btnLive.addEventListener('click', () => setViewMode('live'));
+btnAll.addEventListener('click', () => setViewMode('all'));
+
+// UI Select for Refresh Rate
+const selectRate = document.getElementById('select-rate');
+selectRate.addEventListener('change', (e) => {
+    const rate = parseInt(e.target.value, 10);
+    socket.emit('set_rate', rate);
+    addLog(`Requested refresh rate: ${rate/1000}s`, true);
+});
+
 // Socket events
 socket.on('connect', () => {
     dot.className = 'dot connected';
@@ -170,15 +216,27 @@ socket.on('telemetry', (dataStr) => {
             // Update Chart
             const time = new Date().toLocaleTimeString([], {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
             
+            // Save to absolute history
+            allHistory.labels.push(time);
+            allHistory.co2.push(data.co2);
+            allHistory.tvoc.push(data.tvoc);
+            
+            // Add to active chart view
             sensorChart.data.labels.push(time);
             sensorChart.data.datasets[0].data.push(data.co2);
             sensorChart.data.datasets[1].data.push(data.tvoc);
 
-            // Shift if too many data points
-            if (sensorChart.data.labels.length > maxDataPoints) {
-                sensorChart.data.labels.shift();
-                sensorChart.data.datasets[0].data.shift();
-                sensorChart.data.datasets[1].data.shift();
+            if (viewMode === 'live') {
+                if (sensorChart.data.labels.length > maxDataPoints) {
+                    sensorChart.data.labels.shift();
+                    sensorChart.data.datasets[0].data.shift();
+                    sensorChart.data.datasets[1].data.shift();
+                }
+            } else {
+                // In all-time mode, make sure active chart datasets match full history exactly
+                sensorChart.data.labels = [...allHistory.labels];
+                sensorChart.data.datasets[0].data = [...allHistory.co2];
+                sensorChart.data.datasets[1].data = [...allHistory.tvoc];
             }
             sensorChart.update();
         }

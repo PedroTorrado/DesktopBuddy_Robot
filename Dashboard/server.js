@@ -60,6 +60,14 @@ try {
 
 io.on('connection', (socket) => {
     console.log('Web client connected:', socket.id);
+    
+    socket.on('set_rate', (rate) => {
+        console.log(`Setting rate to ${rate}ms`);
+        if (client && client.connected) {
+            const payload = JSON.stringify({ refresh_rate: rate });
+            client.publish("esp32/face_tracker/control", payload);
+        }
+    });
 });
 
 const PORT = process.env.PORT || 3000;

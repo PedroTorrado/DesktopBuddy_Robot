@@ -4,6 +4,9 @@ An autonomous, reactive, and expressive robotic companion built with an ESP32-CA
 
 ## Features
 *   **Neural Network Face Tracking**: Uses the ESP32-CAM to detect faces and dynamically tracks them using a Proportional-Integral (PI) motor loop.
+*   **SD Card Wi-Fi Loader & OLED Selector Menu**: Reads custom networks on-the-fly from `/wifi.txt` on a MicroSD card. Allows interactively scanning and joining networks via the Nucleo OLED screen and button long-press.
+*   **Dynamic Telemetry Refresh Rate**: Switch between **Eco (5s)** and **Turbo (1s)** refresh modes directly from the web dashboard to control cloud costs or increase responsiveness.
+*   **Startup Link Verification**: Automatic serial handshake (`PING/PONG`) on boot to visually confirm TX/RX wire integrity.
 *   **Emotion Engine**: A state machine that gives the robot a personality (Happy, Searching, Dizzy, Angry) based on sensor inputs.
 *   **Sensory Suite**: Monitors room air quality (SGP30) and avoids collisions with ultrasonic sonar (HC-SR04).
 *   **Cloud Telemetry**: Streams data to AWS IoT Core over MQTT.

@@ -39,9 +39,11 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 uint8_t uart1_rx_byte;
-char esp32_rx_buffer[64];
+char esp32_rx_buffer[256];
 uint8_t esp32_rx_index = 0;
 uint32_t uart_rx_count = 0;
+volatile char cmd_rx_buffer[256];
+volatile uint8_t cmd_rx_ready = 0;
 
 int target_face_x = 0;
 int target_face_y = 0;
@@ -208,7 +210,7 @@ void OLED_Clear(void) {
     }
 }
 
-const uint8_t BasicFont[38][5] = {
+const uint8_t BasicFont[41][5] = {
     {0x3E, 0x51, 0x49, 0x45, 0x3E}, // 0
     {0x00, 0x42, 0x7F, 0x40, 0x00}, // 1
     {0x42, 0x61, 0x51, 0x49, 0x46}, // 2
@@ -246,7 +248,10 @@ const uint8_t BasicFont[38][5] = {
     {0x07, 0x08, 0x70, 0x08, 0x07}, // Y
     {0x61, 0x51, 0x49, 0x45, 0x43}, // Z
     {0x00, 0x00, 0x00, 0x00, 0x00}, // [Space]
-    {0x00, 0x24, 0x24, 0x24, 0x00}  // :
+    {0x00, 0x24, 0x24, 0x24, 0x00}, // :
+    {0x08, 0x08, 0x08, 0x08, 0x08}, // -
+    {0x41, 0x22, 0x14, 0x08, 0x00}, // >
+    {0x08, 0x14, 0x22, 0x41, 0x00}  // <
 };
 
 void OLED_PrintText(uint8_t page, uint8_t col, char* str) {
@@ -261,6 +266,9 @@ void OLED_PrintText(uint8_t page, uint8_t col, char* str) {
         else if (c >= 'A' && c <= 'Z') idx = (c - 'A') + 10;
         else if (c >= 'a' && c <= 'z') idx = (c - 'a') + 10;
         else if (c == ':') idx = 37;
+        else if (c == '-') idx = 38;
+        else if (c == '>') idx = 39;
+        else if (c == '<') idx = 40;
         for(int i = 0; i < 5; i++) tx_buf[i + 1] = BasicFont[idx][i];
         HAL_I2C_Master_Transmit(&hi2c1, OLED_ADDR, tx_buf, 6, 10);
         str++;
@@ -840,15 +848,84 @@ int main(void)
         static uint16_t peak_co2 = 400;
         static uint16_t peak_tvoc = 0;
         static uint8_t display_mode = 1;      // 0 = Telemetry, 1 = Dog Canvas
+        static uint32_t telemetry_interval = 5000; // Dynamically adjusted via MQTT
         static uint8_t last_pin_state = 1;
         static uint8_t dynamic_refresh_needed = 1; // Tracks if static screens need a redraw pass
         static RobotEmotion last_rendered_emotion = EMOTION_HAPPY;
+        
+        static uint8_t wifi_select_mode = 0;
+        static char wifi_ssids[10][32] = {0};
+        static uint8_t wifi_ssid_count = 0;
+        static uint8_t selected_wifi_idx = 0;
+        static char wifi_status[32] = "Idle";
+        static uint32_t press_start_time = 0;
+        static uint8_t is_pressed = 0;
+        static uint8_t long_press_triggered = 0;
+        
+        static uint8_t comm_confirmed = 0;
+        static uint32_t last_ping_time = 0;
+        static uint8_t ping_attempts = 0;
 
         while (1)
         {
-            uint32_t current_time = HAL_GetTick();
-            
-            // 1. Read the Bumper (HC-SR04)
+             uint32_t current_time = HAL_GetTick();
+             
+             // --- UART HANDSHAKE PING SYSTEM ---
+             if (!comm_confirmed && (current_time - last_ping_time >= 1000) && (ping_attempts < 15)) {
+                 last_ping_time = current_time;
+                 ping_attempts++;
+                 char ping_cmd[] = "PING\n";
+                 HAL_UART_Transmit(&huart1, (uint8_t*)ping_cmd, strlen(ping_cmd), 50);
+             }
+             
+             // --- PARSE INCOMING COMMANDS FROM ESP32 ---
+             if (cmd_rx_ready == 1) {
+                 cmd_rx_ready = 0;
+                 char local_cmd_buf[256];
+                 __HAL_UART_DISABLE_IT(&huart1, UART_IT_RXNE);
+                 strncpy(local_cmd_buf, (char*)cmd_rx_buffer, sizeof(local_cmd_buf) - 1);
+                 local_cmd_buf[sizeof(local_cmd_buf) - 1] = '\0';
+                 __HAL_UART_ENABLE_IT(&huart1, UART_IT_RXNE);
+                 
+                                  // printf("[NUCLEO DEBUG RX] Raw command received: '%s'\r\n", local_cmd_buf);
+                 
+                 if (strncmp(local_cmd_buf, "WIFILIST:", 9) == 0) {
+                     wifi_ssid_count = 0;
+                     char* token = strtok(local_cmd_buf + 9, ",");
+                     while (token != NULL && wifi_ssid_count < 10) {
+                         strncpy(wifi_ssids[wifi_ssid_count], token, 31);
+                         wifi_ssids[wifi_ssid_count][31] = '\0';
+                         wifi_ssid_count++;
+                         token = strtok(NULL, ",");
+                     }
+                     dynamic_refresh_needed = 1;
+                 } else if (strncmp(local_cmd_buf, "WIFISTATUS:", 11) == 0) {
+                     char* status_ptr = local_cmd_buf + 11;
+                     if (strncmp(status_ptr, "CONNECTING", 10) == 0) {
+                         char* comma_ptr = strchr(status_ptr, ',');
+                         if (comma_ptr != NULL) {
+                             snprintf(wifi_status, sizeof(wifi_status), "CONN: %s", comma_ptr + 1);
+                         } else {
+                             strncpy(wifi_status, "CONNECTING...", sizeof(wifi_status) - 1);
+                         }
+                     } else if (strcmp(status_ptr, "CONNECTED") == 0) {
+                         strncpy(wifi_status, "CONNECTED", sizeof(wifi_status) - 1);
+                      } else if (strcmp(status_ptr, "FAILED") == 0) {
+                          strncpy(wifi_status, "CONN FAILED", sizeof(wifi_status) - 1);
+                      }
+                      dynamic_refresh_needed = 1;
+                  } else if (strncmp(local_cmd_buf, "SETINTERVAL:", 12) == 0) {
+                      int val = atoi(local_cmd_buf + 12);
+                      if (val >= 500 && val <= 10000) {
+                          telemetry_interval = val;
+                      }
+                  } else if (strncmp(local_cmd_buf, "PONG", 4) == 0) {
+                      comm_confirmed = 1;
+                      dynamic_refresh_needed = 1;
+                  }
+             }
+
+             // 1. Read the Bumper (HC-SR04)
             int distance = HCSR04_Read();
 
             // 2. Evaluate Emotion State Machine
@@ -866,8 +943,8 @@ int main(void)
                 track_face(); 
             }
 
-            // 3. Trigger Screen Refresh on Emotion Change
-            if (display_mode == 1 && last_rendered_emotion != current_emotion) {
+            // 3. Trigger Screen Refresh on Emotion Change (only in normal face mode)
+            if (wifi_select_mode == 0 && display_mode == 1 && last_rendered_emotion != current_emotion) {
                 last_rendered_emotion = current_emotion;
                 dynamic_refresh_needed = 1;
             }
@@ -885,8 +962,8 @@ int main(void)
                 if (cur_tvoc > peak_tvoc) peak_tvoc = cur_tvoc;
             }
 
-            // Transmit peak telemetry data to AWS/ESP32 every 5 seconds to stay inside Free Tier limits
-            if (current_time - last_telemetry_send_time >= 5000) {
+            // Transmit peak telemetry data to AWS/ESP32 dynamically
+            if (current_time - last_telemetry_send_time >= telemetry_interval) {
                 last_telemetry_send_time = current_time;
                 
                 // Set the global variables for OLED screen rendering and debugging
@@ -899,24 +976,86 @@ int main(void)
                 HAL_StatusTypeDef status = HAL_UART_Transmit(&huart1, (uint8_t*)tele_buf, len, 100);
                 
                 // Also print to USART2 (Virtual COM Port) for PC serial debugging
-                printf("Nucleo UART TX Status: %d (0=OK, 1=BUSY, 2=ERROR), Distance: %d\r\n", status, distance);
+                // printf("Nucleo UART TX Status: %d (0=OK, 1=BUSY, 2=ERROR), Distance: %d\r\n", status, distance);
                 
                 // Reset peak values for the next window
                 peak_co2 = 400;
                 peak_tvoc = 0;
             }
 
-            pin_state = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
+            // --- ADVANCED BUTTON LOGIC (PC13, Active Low) ---
+            uint8_t pin_read = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
+            uint8_t single_press_event = 0;
+            uint8_t long_press_event = 0;
 
-            // --- EDGE TRIGGER BUTTON LOGIC ---
-            if (pin_state == 0 && last_pin_state == 1) {
-                display_mode = !display_mode;
-                OLED_Clear();
-                dynamic_refresh_needed = 1; // Alert system to redraw static background elements once
-                last_toggle_time = 0;       // Force immediate update cycle
-                HAL_Delay(50);              // Simple button debounce check
+            if (pin_read == 0) { // Button physically pressed
+                if (!is_pressed) {
+                    is_pressed = 1;
+                    press_start_time = current_time;
+                    long_press_triggered = 0;
+                } else if (!long_press_triggered && (current_time - press_start_time >= 1000)) {
+                    long_press_event = 1;
+                    long_press_triggered = 1;
+                }
+            } else { // Button released
+                if (is_pressed) {
+                    is_pressed = 0;
+                    if (!long_press_triggered && (current_time - press_start_time > 50)) {
+                        single_press_event = 1;
+                    }
+                }
             }
-            last_pin_state = pin_state;
+            
+            // --- BUTTON EVENT HANDLERS ---
+            if (single_press_event) {
+                if (wifi_select_mode == 0) {
+                    display_mode = !display_mode;
+                    OLED_Clear();
+                    dynamic_refresh_needed = 1;
+                    last_toggle_time = 0;
+                } else {
+                    // Scroll to next menu item
+                    selected_wifi_idx++;
+                    if (selected_wifi_idx > wifi_ssid_count) {
+                        selected_wifi_idx = 0;
+                    }
+                    dynamic_refresh_needed = 1;
+                }
+            }
+            
+            if (long_press_event) {
+                if (wifi_select_mode == 0) {
+                    // Enter WiFi Selection Screen
+                    wifi_select_mode = 1;
+                    selected_wifi_idx = 0;
+                    OLED_Clear();
+                    dynamic_refresh_needed = 1;
+                    // Request WiFi list from ESP32
+                    char req_cmd[] = "REQWIFILIST\n";
+                    HAL_UART_Transmit(&huart1, (uint8_t*)req_cmd, strlen(req_cmd), 100);
+                } else {
+                    // Selection made in WiFi Selection Screen
+                    if (selected_wifi_idx == 0) {
+                        // "Back" selected -> return to normal mode
+                        wifi_select_mode = 0;
+                        OLED_Clear();
+                        dynamic_refresh_needed = 1;
+                        last_toggle_time = 0;
+                    } else {
+                        // SSID selected -> Connect to that WiFi index (index = selected_wifi_idx - 1)
+                        char sel_cmd[32];
+                        snprintf(sel_cmd, sizeof(sel_cmd), "SELWIFI:%d\n", selected_wifi_idx - 1);
+                        HAL_UART_Transmit(&huart1, (uint8_t*)sel_cmd, strlen(sel_cmd), 100);
+                        
+                        // Show visual feedback on screen
+                        OLED_Clear();
+                        OLED_PrintText(2, 0, "CONNECTING...");
+                        OLED_PrintText(4, 0, wifi_ssids[selected_wifi_idx - 1]);
+                        HAL_Delay(1000); // Hold message briefly
+                        dynamic_refresh_needed = 1;
+                    }
+                }
+            }
 
             // Everything inside here executes exactly once every 200ms
             if (current_time - last_toggle_time >= 200)
@@ -961,60 +1100,99 @@ int main(void)
                     int16_t y_smooth = y_sum / FILTER_DEPTH;
                     int16_t z_smooth = z_sum / FILTER_DEPTH;
                     if (face_detected) {
-                        printf("[STATUS] Tracking Face at X:%d | Rx:%lu | Air: CO2 %dppm TVOC %dppb | Tilt: %d\r\n", target_face_x, uart_rx_count, sgp30_co2, sgp30_tvoc, x_smooth);
+                         // printf("[STATUS] Tracking Face at X:%d | Rx:%lu | Air: CO2 %dppm TVOC %dppb | Tilt: %d\r\n", target_face_x, uart_rx_count, sgp30_co2, sgp30_tvoc, x_smooth);
                     } else {
-                        printf("[STATUS] Idle | Rx:%lu | Air: CO2 %dppm TVOC %dppb | Tilt: %d\r\n", uart_rx_count, sgp30_co2, sgp30_tvoc, x_smooth);
+                         // printf("[STATUS] Idle | Rx:%lu | Air: CO2 %dppm TVOC %dppb | Tilt: %d\r\n", uart_rx_count, sgp30_co2, sgp30_tvoc, x_smooth);
                     }
                     // --- LIVE STREAM TELEMETRY SPLITTER ---
-                    if (display_mode == 0) {
-						// MODE 0: Active Telemetry
-						if (dynamic_refresh_needed) {
-							OLED_PrintText(0, 0, "SYSTEM RUNNING!");
-							OLED_PrintText(2, 0, "TILT X:");
-							OLED_PrintText(4, 0, "CO2:");
-							OLED_PrintText(6, 0, "TVOC:");
-							dynamic_refresh_needed = 0;
-						}
+                    if (wifi_select_mode == 1) {
+                        if (dynamic_refresh_needed) {
+                            OLED_Clear();
+                            OLED_PrintText(0, 0, "--- SELECT WIFI ---");
+                            char status_line[21];
+                            snprintf(status_line, sizeof(status_line), "S:%s C:%s", wifi_status, comm_confirmed ? "OK" : "??");
+                            OLED_PrintText(1, 0, status_line);
+                            
+                            if (selected_wifi_idx == 0) {
+                                OLED_PrintText(3, 0, "> < BACK");
+                            } else {
+                                OLED_PrintText(3, 0, "  < BACK");
+                            }
+                            
+                            int start_item = 1;
+                            if (selected_wifi_idx > 3) {
+                                start_item = selected_wifi_idx - 2;
+                            }
+                            
+                            for (int i = 0; i < 3; i++) {
+                                int item_idx = start_item + i;
+                                if (item_idx <= wifi_ssid_count) {
+                                    char line_buf[21];
+                                    if (item_idx == selected_wifi_idx) {
+                                        snprintf(line_buf, sizeof(line_buf), "> %s", wifi_ssids[item_idx - 1]);
+                                    } else {
+                                        snprintf(line_buf, sizeof(line_buf), "  %s", wifi_ssids[item_idx - 1]);
+                                    }
+                                    OLED_PrintText(5 + i, 0, line_buf);
+                                } else {
+                                    OLED_PrintText(5 + i, 0, "                    ");
+                                }
+                            }
+                            dynamic_refresh_needed = 0;
+                        }
+                    } else {
+                        if (display_mode == 0) {
+                            // MODE 0: Active Telemetry
+                            if (dynamic_refresh_needed) {
+                                char sys_line[21];
+                                snprintf(sys_line, sizeof(sys_line), "SYS RUN  C:%s", comm_confirmed ? "OK" : "PEND");
+                                OLED_PrintText(0, 0, sys_line);
+                                OLED_PrintText(2, 0, "TILT X:");
+                                OLED_PrintText(4, 0, "CO2:");
+                                OLED_PrintText(6, 0, "TVOC:");
+                                dynamic_refresh_needed = 0;
+                            }
 
-						char display_buffer[24];
-						sprintf(display_buffer, "%d      ", x_smooth);
-						OLED_PrintText(2, 48, display_buffer);
+                            char display_buffer[24];
+                            sprintf(display_buffer, "%d      ", x_smooth);
+                            OLED_PrintText(2, 48, display_buffer);
 
-						sprintf(display_buffer, "%d ppm   ", sgp30_co2);
-						OLED_PrintText(4, 48, display_buffer);
+                            sprintf(display_buffer, "%d ppm   ", sgp30_co2);
+                            OLED_PrintText(4, 48, display_buffer);
 
-						sprintf(display_buffer, "%d ppb   ", sgp30_tvoc);
-						OLED_PrintText(6, 48, display_buffer);
-					}
-					else {
-						// MODE 1: Draw dynamic emotional canvas
-						// Animation states
-                        static uint32_t last_anim_tick = 0;
-                        static int anim_frame = 0;
-                        
-                        if (current_emotion == EMOTION_SEARCHING) {
-                            if (current_time - last_anim_tick > 500) {
-                                last_anim_tick = current_time;
-                                anim_frame = (anim_frame + 1) % 4;
-                                dynamic_refresh_needed = 1;
+                            sprintf(display_buffer, "%d ppb   ", sgp30_tvoc);
+                            OLED_PrintText(6, 48, display_buffer);
+                        }
+                        else {
+                            // MODE 1: Draw dynamic emotional canvas
+                            // Animation states
+                            static uint32_t last_anim_tick = 0;
+                            static int anim_frame = 0;
+                            
+                            if (current_emotion == EMOTION_SEARCHING) {
+                                if (current_time - last_anim_tick > 500) {
+                                    last_anim_tick = current_time;
+                                    anim_frame = (anim_frame + 1) % 4;
+                                    dynamic_refresh_needed = 1;
+                                }
+                            }
+
+                            if (dynamic_refresh_needed) {
+                                if (current_emotion == EMOTION_HAPPY) {
+                                    OLED_DrawBitmap(OLED_SmileBitmap);
+                                } else if (current_emotion == EMOTION_ANGRY) {
+                                    OLED_DrawBitmap(OLED_AngryBitmap);
+                                } else if (current_emotion == EMOTION_SEARCHING) {
+                                    if (anim_frame == 0) OLED_DrawBitmap(OLED_LookLeftBitmap);
+                                    else if (anim_frame == 1 || anim_frame == 3) OLED_DrawBitmap(OLED_LookCenterBitmap);
+                                    else OLED_DrawBitmap(OLED_LookRightBitmap);
+                                } else if (current_emotion == EMOTION_DIZZY) {
+                                    OLED_DrawBitmap(OLED_DizzyBitmap);
+                                }
+                                dynamic_refresh_needed = 0;
                             }
                         }
-
-                        if (dynamic_refresh_needed) {
-                            if (current_emotion == EMOTION_HAPPY) {
-							    OLED_DrawBitmap(OLED_SmileBitmap);
-                            } else if (current_emotion == EMOTION_ANGRY) {
-                                OLED_DrawBitmap(OLED_AngryBitmap);
-                            } else if (current_emotion == EMOTION_SEARCHING) {
-                                if (anim_frame == 0) OLED_DrawBitmap(OLED_LookLeftBitmap);
-                                else if (anim_frame == 1 || anim_frame == 3) OLED_DrawBitmap(OLED_LookCenterBitmap);
-                                else OLED_DrawBitmap(OLED_LookRightBitmap);
-                            } else if (current_emotion == EMOTION_DIZZY) {
-                                OLED_DrawBitmap(OLED_DizzyBitmap);
-                            }
-							dynamic_refresh_needed = 0;
-						}
-					}
+                    }
                 last_toggle_time = current_time;
             }
 
@@ -1329,10 +1507,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
                 } else if (id == -2) {
                     face_detected = 0;
                 }
+            } else {
+                // Buffer non-face commands for main loop processing
+                strncpy((char*)cmd_rx_buffer, esp32_rx_buffer, sizeof(cmd_rx_buffer) - 1);
+                cmd_rx_buffer[sizeof(cmd_rx_buffer) - 1] = '\0';
+                cmd_rx_ready = 1;
             }
             esp32_rx_index = 0;
         } else {
-            if (esp32_rx_index < 63) {
+            if (esp32_rx_index < 255) {
                 esp32_rx_buffer[esp32_rx_index++] = uart1_rx_byte;
             }
         }
