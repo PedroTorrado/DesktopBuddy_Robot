@@ -39,17 +39,17 @@ UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t uart1_rx_byte;
-char esp32_rx_buffer[256];
-uint8_t esp32_rx_index = 0;
-uint32_t uart_rx_count = 0;
+volatile uint8_t uart1_rx_byte;
+volatile char esp32_rx_buffer[256];
+volatile uint8_t esp32_rx_index = 0;
+volatile uint32_t uart_rx_count = 0;
 volatile char cmd_rx_buffer[256];
 volatile uint8_t cmd_rx_ready = 0;
 
-int target_face_x = 0;
-int target_face_y = 0;
-int face_detected = 0;
-uint32_t last_face_time = 0;
+volatile int target_face_x = 0;
+volatile int target_face_y = 0;
+volatile int face_detected = 0;
+volatile uint32_t last_face_time = 0;
 
 uint16_t sgp30_co2 = 400;
 uint16_t sgp30_tvoc = 0;
