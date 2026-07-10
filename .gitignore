@@ -29,3 +29,10 @@ certs/
 *.crt
 *.key
 *.der
+
+# KiCad
+**/*.kicad_prl
+**/*.lck
+**/fp-info-cache
+**/.history/
+**/*-backups/
