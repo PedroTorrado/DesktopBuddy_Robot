@@ -154,8 +154,13 @@ void set_motors(int speed_left, int speed_right) {
 
     if (speed_left > 999) speed_left = 999;
     if (speed_right > 999) speed_right = 999;
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, speed_left);
-    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, speed_right);
+
+    // Scale 0-1000 speed range to 0-65535 PWM period of TIM3
+    uint32_t compare_left = (speed_left * 65535) / 1000;
+    uint32_t compare_right = (speed_right * 65535) / 1000;
+
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_1, compare_left);
+    __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, compare_right);
 }
 
 void track_face() {
