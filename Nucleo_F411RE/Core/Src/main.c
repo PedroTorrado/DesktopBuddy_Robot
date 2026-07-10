@@ -801,6 +801,13 @@ int main(void)
     HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_2);
     
+    // Startup motor wiggle test to confirm operation
+    set_motors(350, -350);
+    HAL_Delay(150);
+    set_motors(-350, 350);
+    HAL_Delay(150);
+    set_motors(0, 0);
+    
     // Enable DWT Cycle Counter for HC-SR04 microsecond delays
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     DWT->CYCCNT = 0;
