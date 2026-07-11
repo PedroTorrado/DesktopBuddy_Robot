@@ -128,6 +128,10 @@ void connectWiFiOnBoot() {
   loadWiFiFromSD();
   loadLastWiFi();
 
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.setTxPower(WIFI_POWER_15dBm);
+
   if (lastSSID.length() > 0) {
     Serial.printf("Connecting to last used WiFi: %s\n", lastSSID.c_str());
     Serial.printf("WIFISTATUS:CONNECTING,%s\n", lastSSID.c_str());
@@ -314,6 +318,7 @@ void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Disable brownout detector to survive Wi-Fi power spikes
   
   Serial.begin(115200, SERIAL_8N1, 3, 1);
+  Serial.setTimeout(10); // Reduce default blocking read timeout from 1000ms to 10ms
   Serial.setDebugOutput(true);
   Serial.println();
 
@@ -321,8 +326,11 @@ void setup() {
   pinMode(33, OUTPUT);
   digitalWrite(33, HIGH); // Turn off initially (Active Low)
 
+  // 1. Connect Wi-Fi first before turning on the power-hungry camera sensor
+  connectWiFiOnBoot();
+  WiFi.setSleep(false);
 
-
+  // 2. Now initialize camera sensor configuration
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -351,20 +359,16 @@ void setup() {
   config.jpeg_quality = 12;
   config.fb_count = 1;
   
-  // if PSRAM IC present, init with UXGA resolution and higher JPEG quality
-  //                      for larger pre-allocated frame buffer.
   if(config.pixel_format == PIXFORMAT_JPEG){
     if(psramFound()){
       config.jpeg_quality = 16;
       config.fb_count = 2;
       config.grab_mode = CAMERA_GRAB_LATEST;
     } else {
-      // Limit the frame size when PSRAM is not available (QVGA is perfect for DRAM and face detection)
       config.frame_size = FRAMESIZE_QVGA;
       config.fb_location = CAMERA_FB_IN_DRAM;
     }
   } else {
-    // Best option for face detection/recognition
     config.frame_size = FRAMESIZE_240X240;
 #if CONFIG_IDF_TARGET_ESP32S3
     config.fb_count = 2;
@@ -384,13 +388,11 @@ void setup() {
   }
 
   sensor_t * s = esp_camera_sensor_get();
-  // initial sensors are flipped vertically and colors are a bit saturated
   if (s->id.PID == OV3660_PID) {
-    s->set_vflip(s, 1); // flip it back
-    s->set_brightness(s, 1); // up the brightness just a bit
-    s->set_saturation(s, -2); // lower the saturation
+    s->set_vflip(s, 1);
+    s->set_brightness(s, 1);
+    s->set_saturation(s, -2);
   }
-  // drop down frame size for higher initial frame rate
   if(config.pixel_format == PIXFORMAT_JPEG){
     s->set_framesize(s, FRAMESIZE_QVGA);
   }
@@ -404,20 +406,16 @@ void setup() {
   s->set_vflip(s, 1);
 #endif
 
-// Setup LED FLash if LED pin is defined in camera_pins.h
 #if defined(LED_GPIO_NUM)
   setupLedFlash(LED_GPIO_NUM);
 #endif
 
-  connectWiFiOnBoot();
-  WiFi.setSleep(false);
-
+  // 3. NTP Time Synchronization
   if (WiFi.status() == WL_CONNECTED) {
-    // Sync time via NTP. This is REQUIRED for AWS IoT Core so WiFiClientSecure can validate the TLS certificate expiration date!
     configTime(0, 0, "pool.ntp.org", "time.nist.gov");
     Serial.print("Syncing time");
     time_t now_t = time(nullptr);
-    int time_retries = 20; // Max 10 seconds wait
+    int time_retries = 20;
     while (now_t < 100000 && time_retries > 0) { 
       delay(500);
       Serial.print(".");
@@ -435,9 +433,8 @@ void setup() {
   delay(1000);
   sendWiFiListToNucleo();
 
-  // Blink LED at a low brightness to signal connection
+  // Blink LED to signal connection status
   const int safe_brightness = 2;
-
   ledcWrite(2, safe_brightness); 
   delay(200);
   ledcWrite(2, 0); 
@@ -448,8 +445,7 @@ void setup() {
 
   startCameraServer();
 
-  // Configure physical button pin with internal pull-up (configured at the end
-  // of setup() to prevent the SD_MMC.end() from overriding its pinmode)
+  // Configure physical button pin at the very end of setup() to prevent SD override
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   Serial.print("Camera Ready! Use 'http://");

@@ -1342,7 +1342,7 @@ static void autonomous_tracking_task(void *pvParameters) {
     while (true) {
         bool pin_state = (digitalRead(START_STREAM_GPIO) == HIGH);
 
-        if (!isStreaming && pin_state) {
+        if (!isStreaming && pin_state && detection_enabled) {
             last_pin_state = HIGH;
             camera_fb_t *fb = esp_camera_fb_get();
             if (!fb) {
@@ -1413,8 +1413,8 @@ static void autonomous_tracking_task(void *pvParameters) {
             }
             esp_camera_fb_return(fb);
             vTaskDelay(10 / portTICK_PERIOD_MS); // Yield CPU
-        } else if (!isStreaming && !pin_state) {
-            // Pin just went LOW! Send "face lost" immediately to notify Nucleo
+        } else if (!isStreaming && (!pin_state || !detection_enabled)) {
+            // Pin went LOW or Face Detection was disabled on web!
             if (last_pin_state == HIGH) {
                 Serial.printf("FACE:-2,0,0\n");
                 publishFaceData(-2, 0, 0);

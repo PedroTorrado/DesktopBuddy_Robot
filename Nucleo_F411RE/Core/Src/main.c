@@ -56,6 +56,17 @@ volatile uint32_t last_manual_command_time = 0;
 volatile int manual_left_speed = 0;
 volatile int manual_right_speed = 0;
 
+// Globals for Motor Acceleration Ramping (Soft Start)
+volatile int target_left_speed = 0;
+volatile int target_right_speed = 0;
+volatile int current_left_speed = 0;
+volatile int current_right_speed = 0;
+
+// Globals for Webpage & Screen Menu Button options
+volatile uint32_t button_pressed_time = 0;
+volatile uint8_t button_held = 0;
+volatile uint8_t face_detect_pin_state = 1; // Default ON (sets GPIOC Pin 8 to HIGH)
+
 uint16_t sgp30_co2 = 400;
 uint16_t sgp30_tvoc = 0;
 /* USER CODE END PV */
@@ -68,6 +79,8 @@ static void MX_I2C1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+void set_motors(int speed_left, int speed_right);
+void apply_motors(int speed_left, int speed_right);
 
 /* USER CODE END PFP */
 
@@ -133,6 +146,11 @@ void SGP30_Measure(uint16_t *co2, uint16_t *tvoc) {
 }
 
 void set_motors(int speed_left, int speed_right) {
+    target_left_speed = speed_left;
+    target_right_speed = speed_right;
+}
+
+void apply_motors(int speed_left, int speed_right) {
     if (speed_left > 0) {
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_SET);
         HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_RESET);
@@ -874,6 +892,33 @@ int main(void)
         while (1)
         {
              uint32_t current_time = HAL_GetTick();
+
+             // --- MOTOR SPEED RAMPING (Soft Start to prevent current surge / brownouts) ---
+             static uint32_t last_ramp_time = 0;
+             if (current_time - last_ramp_time >= 5) {
+                 last_ramp_time = current_time;
+                 
+                 // Ramp Left Speed
+                 if (current_left_speed < target_left_speed) {
+                     current_left_speed += 15;
+                     if (current_left_speed > target_left_speed) current_left_speed = target_left_speed;
+                 } else if (current_left_speed > target_left_speed) {
+                     current_left_speed -= 15;
+                     if (current_left_speed < target_left_speed) current_left_speed = target_left_speed;
+                 }
+                 
+                 // Ramp Right Speed
+                 if (current_right_speed < target_right_speed) {
+                     current_right_speed += 15;
+                     if (current_right_speed > target_right_speed) current_right_speed = target_right_speed;
+                 } else if (current_right_speed > target_right_speed) {
+                     current_right_speed -= 15;
+                     if (current_right_speed < target_right_speed) current_right_speed = target_right_speed;
+                 }
+                 
+                 // Apply current ramped speeds physically
+                 apply_motors(current_left_speed, current_right_speed);
+             }
              
              // --- PARSE INCOMING COMMANDS FROM ESP32 ---
              if (cmd_rx_ready == 1) {
@@ -912,12 +957,18 @@ int main(void)
                           manual_left_speed = left;
                           manual_right_speed = right;
                           last_manual_command_time = HAL_GetTick();
+                          printf("[DEBUG] MOTOR RX - Left: %d, Right: %d\r\n", left, right);
                       }
                   }
              }
 
-             // 1. Read the Bumper (HC-SR04)
-            int distance = HCSR04_Read();
+             // 1. Read the Bumper (HC-SR04) every 100ms instead of every loop cycle to prevent CPU blocking
+             static uint32_t last_bumper_time = 0;
+             static int distance = 0;
+             if (current_time - last_bumper_time >= 100) {
+                 last_bumper_time = current_time;
+                 distance = HCSR04_Read();
+             }
 
             // 2. Evaluate Emotion State Machine / Motor Control
             if (current_time - last_manual_command_time < 800) {
@@ -981,14 +1032,35 @@ int main(void)
                 peak_tvoc = 0;
             }
 
-            // --- SIMPLE BUTTON TOGGLE LOGIC ---
+            // --- MENU BUTTON TOGGLE / DETECT OPTION LOGIC ---
             uint8_t pin_read = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
             if (pin_read == 0 && last_pin_state == 1) {
-                display_mode = !display_mode;
-                OLED_Clear();
-                dynamic_refresh_needed = 1;
-                last_toggle_time = 0;
-                HAL_Delay(50); // Button debounce delay
+                button_pressed_time = HAL_GetTick();
+                button_held = 1;
+                HAL_Delay(50); // Button debounce
+            } else if (pin_read == 1 && last_pin_state == 0) {
+                if (button_held) {
+                    button_held = 0;
+                    uint32_t press_duration = HAL_GetTick() - button_pressed_time;
+                    if (press_duration < 800) {
+                        // Short press: Cycle display modes (0 -> 1 -> 2 -> 0)
+                        display_mode = (display_mode + 1) % 3;
+                        OLED_Clear();
+                        dynamic_refresh_needed = 1;
+                        last_toggle_time = 0;
+                    }
+                }
+            }
+            
+            // Check for active long press to toggle pin state (when in display_mode == 2)
+            if (button_held && (HAL_GetTick() - button_pressed_time >= 800)) {
+                button_held = 0; // Trigger once per hold
+                if (display_mode == 2) {
+                    face_detect_pin_state = !face_detect_pin_state;
+                    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, face_detect_pin_state ? GPIO_PIN_SET : GPIO_PIN_RESET);
+                    OLED_Clear();
+                    dynamic_refresh_needed = 1;
+                }
             }
             last_pin_state = pin_read;
 
@@ -1062,35 +1134,49 @@ int main(void)
                         sprintf(display_buffer, "%d ppb   ", sgp30_tvoc);
                         OLED_PrintText(6, 48, display_buffer);
                     }
-                        else {
-                            // MODE 1: Draw dynamic emotional canvas
-                            // Animation states
-                            static uint32_t last_anim_tick = 0;
-                            static int anim_frame = 0;
-                            
-                            if (current_emotion == EMOTION_SEARCHING) {
-                                if (current_time - last_anim_tick > 500) {
-                                    last_anim_tick = current_time;
-                                    anim_frame = (anim_frame + 1) % 4;
-                                    dynamic_refresh_needed = 1;
-                                }
-                            }
-
-                            if (dynamic_refresh_needed) {
-                                if (current_emotion == EMOTION_HAPPY) {
-                                    OLED_DrawBitmap(OLED_SmileBitmap);
-                                } else if (current_emotion == EMOTION_ANGRY) {
-                                    OLED_DrawBitmap(OLED_AngryBitmap);
-                                } else if (current_emotion == EMOTION_SEARCHING) {
-                                    if (anim_frame == 0) OLED_DrawBitmap(OLED_LookLeftBitmap);
-                                    else if (anim_frame == 1 || anim_frame == 3) OLED_DrawBitmap(OLED_LookCenterBitmap);
-                                    else OLED_DrawBitmap(OLED_LookRightBitmap);
-                                } else if (current_emotion == EMOTION_DIZZY) {
-                                    OLED_DrawBitmap(OLED_DizzyBitmap);
-                                }
-                                dynamic_refresh_needed = 0;
+                    else if (display_mode == 1) {
+                        // MODE 1: Draw dynamic emotional canvas
+                        static uint32_t last_anim_tick = 0;
+                        static int anim_frame = 0;
+                        
+                        if (current_emotion == EMOTION_SEARCHING) {
+                            if (current_time - last_anim_tick > 500) {
+                                last_anim_tick = current_time;
+                                anim_frame = (anim_frame + 1) % 4;
+                                dynamic_refresh_needed = 1;
                             }
                         }
+
+                        if (dynamic_refresh_needed) {
+                            if (current_emotion == EMOTION_HAPPY) {
+                                OLED_DrawBitmap(OLED_SmileBitmap);
+                            } else if (current_emotion == EMOTION_ANGRY) {
+                                OLED_DrawBitmap(OLED_AngryBitmap);
+                            } else if (current_emotion == EMOTION_SEARCHING) {
+                                if (anim_frame == 0) OLED_DrawBitmap(OLED_LookLeftBitmap);
+                                else if (anim_frame == 1 || anim_frame == 3) OLED_DrawBitmap(OLED_LookCenterBitmap);
+                                else OLED_DrawBitmap(OLED_LookRightBitmap);
+                            } else if (current_emotion == EMOTION_DIZZY) {
+                                OLED_DrawBitmap(OLED_DizzyBitmap);
+                            }
+                            dynamic_refresh_needed = 0;
+                        }
+                    }
+                    else if (display_mode == 2) {
+                        // MODE 2: Options Menu
+                        if (dynamic_refresh_needed) {
+                            OLED_PrintText(0, 0, "=== SCREEN MENU ===");
+                            OLED_PrintText(2, 0, "Face Detect Pin:    ");
+                            if (face_detect_pin_state) {
+                                OLED_PrintText(2, 96, "[ON] ");
+                            } else {
+                                OLED_PrintText(2, 96, "[OFF]");
+                            }
+                            OLED_PrintText(4, 0, "* Hold Blue Button  ");
+                            OLED_PrintText(5, 0, "  for 1s to toggle  ");
+                            dynamic_refresh_needed = 0;
+                        }
+                    }
                     }
                 last_toggle_time = current_time;
             }
@@ -1186,7 +1272,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.ClockSpeed = 400000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;

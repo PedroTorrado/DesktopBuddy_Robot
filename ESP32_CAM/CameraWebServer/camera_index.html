@@ -1288,15 +1288,15 @@ document.addEventListener('DOMContentLoaded', function (event) {
       lastRequestTime = Date.now();
       executeMotorRequest(0, 0);
       
-      // Send a second backup stop command after 100ms just to be absolutely sure!
-      setTimeout(() => executeMotorRequest(0, 0), 100);
+      // Send a second backup stop command after 50ms just to be absolutely sure!
+      setTimeout(() => executeMotorRequest(0, 0), 50);
       return;
     }
 
     const now = Date.now();
     const timeSinceLast = now - lastRequestTime;
     
-    if (timeSinceLast >= 150) {
+    if (timeSinceLast >= 80) {
       lastRequestTime = now;
       executeMotorRequest(left, right);
     } else {
@@ -1309,7 +1309,7 @@ document.addEventListener('DOMContentLoaded', function (event) {
             pendingCommand = null;
             sendMotorCommand(cmd.left, cmd.right);
           }
-        }, 150 - timeSinceLast);
+        }, 80 - timeSinceLast);
       }
     }
   }
@@ -1321,7 +1321,7 @@ document.addEventListener('DOMContentLoaded', function (event) {
     sendMotorCommand(left, right);
     driveInterval = setInterval(() => {
       sendMotorCommand(activeSpeedLeft, activeSpeedRight);
-    }, 400);
+    }, 250);
   }
 
   function stopDriving() {
