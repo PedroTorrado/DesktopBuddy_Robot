@@ -256,4 +256,9 @@
 		(uuid "e38dd0b3-a13c-46ca-8985-a85ecdfed7d9")
 	)
 	(embedded_fonts no)
+	(model "${KIPRJMOD}/components/ESP32-CAM.step"
+		(offset (xyz 0 0 0))
+		(scale (xyz 1 1 1))
+		(rotate (xyz 0 0 0))
+	)
 )

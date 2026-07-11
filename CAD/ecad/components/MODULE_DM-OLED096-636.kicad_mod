@@ -37,4 +37,9 @@
   (fp_line (start -7.0 11.0) (end -7.0 13.0) (layer F.SilkS) (width 0.127))
   (fp_line (start -7.0 13.0) (end -13.0 13.0) (layer F.SilkS) (width 0.127))
   (fp_line (start -13.0 13.0) (end -13.0 -13.0) (layer F.SilkS) (width 0.127))
+  (model "${KIPRJMOD}/components/DM-OLED096-636.step"
+    (offset (xyz 0 0 0))
+    (scale (xyz 1 1 1))
+    (rotate (xyz 0 0 0))
+  )
 )

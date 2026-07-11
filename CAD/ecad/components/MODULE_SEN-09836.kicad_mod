@@ -31,4 +31,9 @@
   (fp_line (start -10.41 -7.87) (end -10.41 7.87) (layer F.CrtYd) (width 0.05))
   (fp_circle (center -8.89 8.25) (end -8.79 8.25) (layer F.SilkS) (width 0.2))
   (fp_circle (center -8.89 8.25) (end -8.79 8.25) (layer F.Fab) (width 0.2))
+  (model "${KIPRJMOD}/components/SEN-09836.step"
+    (offset (xyz 0 0 0))
+    (scale (xyz 1 1 1))
+    (rotate (xyz 0 0 0))
+  )
 )
