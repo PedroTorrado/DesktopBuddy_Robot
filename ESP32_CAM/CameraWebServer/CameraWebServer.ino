@@ -288,6 +288,17 @@ void publishFaceData(int face_id, int x, int y) {
   newFaceDataReady = true;
 }
 
+#define BUTTON_PIN 13
+extern int led_duty; // Declared in app_httpd.cpp
+
+// Variables for button debouncing and state
+int lastButtonState = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long debounceDelay = 50; // 50 ms
+int currentLevelIndex = 0;
+const int brightnessLevels[] = {0, 10, 50, 120, 255};
+const int numLevels = sizeof(brightnessLevels) / sizeof(brightnessLevels[0]);
+
 void setup() {
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Disable brownout detector to survive Wi-Fi power spikes
   
@@ -298,6 +309,9 @@ void setup() {
   // Configure onboard red LED (GPIO33) as output for serial diagnostics
   pinMode(33, OUTPUT);
   digitalWrite(33, HIGH); // Turn off initially (Active Low)
+
+  // Configure physical button pin with internal pull-up
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -532,6 +546,22 @@ void loop() {
       }
     }
   }
+
+  // Read and debounce physical button to cycle Flash LED intensity
+  int reading = digitalRead(BUTTON_PIN);
+  if (reading != lastButtonState) {
+    if (millis() - lastDebounceTime > debounceDelay) {
+      if (reading == LOW) { // Button press detected
+        currentLevelIndex = (currentLevelIndex + 1) % numLevels;
+        led_duty = brightnessLevels[currentLevelIndex];
+        ledcWrite(2, led_duty);
+        Serial.printf("[BUTTON] LED Flash Intensity set to: %d (Level %d/%d)\n", 
+                      led_duty, currentLevelIndex, numLevels - 1);
+      }
+      lastDebounceTime = millis();
+    }
+  }
+  lastButtonState = reading;
 
   delay(10);
 }
