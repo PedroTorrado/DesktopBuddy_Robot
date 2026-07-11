@@ -1,6 +1,6 @@
 # Project Mimir
 
-![Project Mimir Logo](mimir_logo.png)
+<img src="mimir_logo.png" width="120" alt="Project Mimir Logo">
 
 An autonomous, reactive, and expressive robotic companion built with an ESP32-CAM and STM32 Nucleo.
 
