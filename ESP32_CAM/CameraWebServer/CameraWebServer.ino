@@ -288,7 +288,7 @@ void publishFaceData(int face_id, int x, int y) {
   newFaceDataReady = true;
 }
 
-#define BUTTON_PIN 12
+#define BUTTON_PIN 13
 extern int led_duty; // Declared in app_httpd.cpp
 
 // Variables for button debouncing and state
