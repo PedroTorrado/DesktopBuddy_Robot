@@ -1,6 +1,11 @@
-# DesktopBuddy Robot
+# Project Mimir
+
+![Project Mimir Logo](mimir_logo.png)
 
 An autonomous, reactive, and expressive robotic companion built with an ESP32-CAM and STM32 Nucleo.
+
+## ᛗ Runic Symbolism
+The project logo features the Norse rune **Mannaz (ᛗ)** representing humanity and the mind, combined with a central camera lens. This symbolizes the camera's core objective: searching for, tracking, and identifying human faces. The name *Mimir* refers to the wise Norse sentinel head whose well guards Odin's sacrificed eye.
 
 ## Features
 *   **Neural Network Face Tracking**: Uses the ESP32-CAM to detect faces and dynamically tracks them using a Proportional-Integral (PI) motor loop.
@@ -12,7 +17,7 @@ An autonomous, reactive, and expressive robotic companion built with an ESP32-CA
 *   **Cloud Telemetry**: Streams data to AWS IoT Core over MQTT.
 
 ## Expressive Personalities
-DesktopBuddy uses its SSD1306 OLED display to express its emotions dynamically based on sensor inputs:
+Project Mimir uses its SSD1306 OLED display to express its emotions dynamically based on sensor inputs:
 
 ### HAPPY (Tracking)
 ```text
