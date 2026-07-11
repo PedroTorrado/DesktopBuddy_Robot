@@ -310,8 +310,7 @@ void setup() {
   pinMode(33, OUTPUT);
   digitalWrite(33, HIGH); // Turn off initially (Active Low)
 
-  // Configure physical button pin with internal pull-up
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -437,6 +436,10 @@ void setup() {
   ledcWrite(2, 0); 
 
   startCameraServer();
+
+  // Configure physical button pin with internal pull-up (configured at the end
+  // of setup() to prevent the SD_MMC.end() from overriding its pinmode)
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   Serial.print("Camera Ready! Use 'http://");
   Serial.print(WiFi.localIP());
