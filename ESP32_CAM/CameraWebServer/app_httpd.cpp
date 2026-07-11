@@ -24,6 +24,17 @@
 #include "Arduino.h" 
 extern void publishFaceData(int face_id, int x, int y); 
 
+// Extern globals for telemetry display
+extern volatile int telemetry_co2;
+extern volatile int telemetry_tvoc;
+extern volatile int telemetry_distance;
+extern volatile int telemetry_emotion; 
+
+// Extern globals for WiFi status display
+extern char wifi_ssid_str[33];
+extern int wifi_rssi_val;
+extern char wifi_ip_str[16]; 
+
 #if defined(ARDUINO_ARCH_ESP32) && defined(CONFIG_ARDUHAL_ESP_LOG)
 #include "esp32-hal-log.h"
 #endif
@@ -1019,7 +1030,7 @@ static int print_reg(char * p, sensor_t * s, uint16_t reg, uint32_t mask){
 
 static esp_err_t status_handler(httpd_req_t *req)
 {
-    static char json_response[1024];
+    static char json_response[2048];
 
     sensor_t *s = esp_camera_sensor_get();
     char *p = json_response;
@@ -1092,6 +1103,15 @@ static esp_err_t status_handler(httpd_req_t *req)
     p += sprintf(p, "\"face_recognize\":%u", recognition_enabled);
 #endif
 #endif
+    // Append system telemetry and network information
+    p += sprintf(p, ",\"wifi_ssid\":\"%s\"", wifi_ssid_str);
+    p += sprintf(p, ",\"wifi_rssi\":%d", wifi_rssi_val);
+    p += sprintf(p, ",\"wifi_ip\":\"%s\"", wifi_ip_str);
+    p += sprintf(p, ",\"telemetry_co2\":%d", telemetry_co2);
+    p += sprintf(p, ",\"telemetry_tvoc\":%d", telemetry_tvoc);
+    p += sprintf(p, ",\"telemetry_distance\":%d", telemetry_distance);
+    p += sprintf(p, ",\"telemetry_emotion\":%d", telemetry_emotion);
+
     *p++ = '}';
     *p++ = 0;
     httpd_resp_set_type(req, "application/json");
@@ -1262,6 +1282,34 @@ static esp_err_t win_handler(httpd_req_t *req)
     return httpd_resp_send(req, NULL, 0);
 }
 
+static esp_err_t motor_handler(httpd_req_t *req)
+{
+    char* buf = NULL;
+    char left_str[16] = {0};
+    char right_str[16] = {0};
+
+    size_t buf_len = httpd_req_get_url_query_len(req) + 1;
+    if (buf_len > 1) {
+        buf = (char*)malloc(buf_len);
+        if(!buf){
+            httpd_resp_send_500(req);
+            return ESP_FAIL;
+        }
+        if (httpd_req_get_url_query_str(req, buf, buf_len) == ESP_OK) {
+            if (httpd_query_key_value(buf, "left", left_str, sizeof(left_str)) == ESP_OK &&
+                httpd_query_key_value(buf, "right", right_str, sizeof(right_str)) == ESP_OK) {
+                int left = atoi(left_str);
+                int right = atoi(right_str);
+                // Send command over UART to Nucleo
+                Serial.printf("MOTOR:%d,%d\n", left, right);
+            }
+        }
+        free(buf);
+    }
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    return httpd_resp_send(req, NULL, 0);
+}
+
 static esp_err_t index_handler(httpd_req_t *req)
 {
     httpd_resp_set_type(req, "text/html");
@@ -1290,8 +1338,12 @@ static void autonomous_tracking_task(void *pvParameters) {
     HumanFaceDetectMSR01 s1(0.3F, 0.5F, 10, 0.2F);
 #endif
 
+    bool last_pin_state = LOW;
     while (true) {
-        if (!isStreaming && digitalRead(START_STREAM_GPIO) == HIGH) {
+        bool pin_state = (digitalRead(START_STREAM_GPIO) == HIGH);
+
+        if (!isStreaming && pin_state) {
+            last_pin_state = HIGH;
             camera_fb_t *fb = esp_camera_fb_get();
             if (!fb) {
                 // Serial.println("DEBUG: Camera capture failed in autonomous task");
@@ -1307,7 +1359,7 @@ static void autonomous_tracking_task(void *pvParameters) {
                 Serial.printf("DEBUG: Frame too large (%d x %d)\n", fb->width, fb->height);
                 esp_camera_fb_return(fb);
                 Serial.printf("FACE:-2,0,0\n");
-publishFaceData(-2, 0, 0);
+                publishFaceData(-2, 0, 0);
                 vTaskDelay(100 / portTICK_PERIOD_MS);
                 continue;
             }
@@ -1325,7 +1377,7 @@ publishFaceData(-2, 0, 0);
                     int x_center = (int)face.box[0] + (((int)face.box[2] - (int)face.box[0] + 1) / 2);
                     int y_center = (int)face.box[1] + (((int)face.box[3] - (int)face.box[1] + 1) / 2);
                     Serial.printf("FACE:%d,%d,%d\n", face_id, x_center, y_center);
-publishFaceData(face_id, x_center, y_center);
+                    publishFaceData(face_id, x_center, y_center);
                 }
             } else {
                 size_t out_len = fb->width * fb->height * 3;
@@ -1345,7 +1397,7 @@ publishFaceData(face_id, x_center, y_center);
                             int x_center = (int)face.box[0] + (((int)face.box[2] - (int)face.box[0] + 1) / 2);
                             int y_center = (int)face.box[1] + (((int)face.box[3] - (int)face.box[1] + 1) / 2);
                             Serial.printf("FACE:%d,%d,%d\n", face_id, x_center, y_center);
-publishFaceData(face_id, x_center, y_center);
+                            publishFaceData(face_id, x_center, y_center);
                         }
                     } else {
                         Serial.println("DEBUG: fmt2rgb888 failed");
@@ -1357,13 +1409,18 @@ publishFaceData(face_id, x_center, y_center);
             }
             if (!detected) {
                 Serial.printf("FACE:-2,0,0\n");
-publishFaceData(-2, 0, 0);
+                publishFaceData(-2, 0, 0);
             }
             esp_camera_fb_return(fb);
             vTaskDelay(10 / portTICK_PERIOD_MS); // Yield CPU
-        } else if (!isStreaming && digitalRead(START_STREAM_GPIO) == LOW) {
-            // Camera is idling/sleeping to save power. Do not spam Serial.
-            vTaskDelay(500 / portTICK_PERIOD_MS);
+        } else if (!isStreaming && !pin_state) {
+            // Pin just went LOW! Send "face lost" immediately to notify Nucleo
+            if (last_pin_state == HIGH) {
+                Serial.printf("FACE:-2,0,0\n");
+                publishFaceData(-2, 0, 0);
+                last_pin_state = LOW;
+            }
+            vTaskDelay(200 / portTICK_PERIOD_MS);
         } else {
             // Stream is active, stream_handler is doing the work
             vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -1524,6 +1581,13 @@ void startCameraServer()
 #endif
     };
 
+    httpd_uri_t motor_uri = {
+        .uri       = "/motor",
+        .method    = HTTP_GET,
+        .handler   = motor_handler,
+        .user_ctx  = NULL
+    };
+
     ra_filter_init(&ra_filter, 20);
 
 #if CONFIG_ESP_FACE_RECOGNITION_ENABLED
@@ -1546,6 +1610,7 @@ void startCameraServer()
         httpd_register_uri_handler(camera_httpd, &greg_uri);
         httpd_register_uri_handler(camera_httpd, &pll_uri);
         httpd_register_uri_handler(camera_httpd, &win_uri);
+        httpd_register_uri_handler(camera_httpd, &motor_uri);
     }
 
     config.server_port += 1;

@@ -51,6 +51,11 @@ volatile int target_face_y = 0;
 volatile int face_detected = 0;
 volatile uint32_t last_face_time = 0;
 
+// Globals for Webpage Manual Control
+volatile uint32_t last_manual_command_time = 0;
+volatile int manual_left_speed = 0;
+volatile int manual_right_speed = 0;
+
 uint16_t sgp30_co2 = 400;
 uint16_t sgp30_tvoc = 0;
 /* USER CODE END PV */
@@ -901,25 +906,39 @@ int main(void)
                           strncpy(wifi_status, "CONN FAILED", sizeof(wifi_status) - 1);
                       }
                       dynamic_refresh_needed = 1;
+                  } else if (strncmp(local_cmd_buf, "MOTOR:", 6) == 0) {
+                      int left = 0, right = 0;
+                      if (sscanf(local_cmd_buf, "MOTOR:%d,%d", &left, &right) == 2) {
+                          manual_left_speed = left;
+                          manual_right_speed = right;
+                          last_manual_command_time = HAL_GetTick();
+                      }
                   }
              }
 
              // 1. Read the Bumper (HC-SR04)
             int distance = HCSR04_Read();
 
-            // 2. Evaluate Emotion State Machine
-            if (current_time - last_bop_time < 3000) {
-                current_emotion = EMOTION_DIZZY;
-                set_motors(0, 0); 
-            } else if (distance > 0 && distance < 15) {
-                current_emotion = EMOTION_ANGRY;
-                set_motors(0, 0); 
-            } else if (current_time - last_face_time > 10000) {
-                current_emotion = EMOTION_SEARCHING;
-                set_motors(0, 0); 
-            } else {
+            // 2. Evaluate Emotion State Machine / Motor Control
+            if (current_time - last_manual_command_time < 800) {
+                // Manual override from webpage is active
+                set_motors(manual_left_speed, manual_right_speed);
                 current_emotion = EMOTION_HAPPY;
-                track_face(); 
+            } else {
+                // Autonomous mode
+                if (current_time - last_bop_time < 3000) {
+                    current_emotion = EMOTION_DIZZY;
+                    set_motors(0, 0); 
+                } else if (distance > 0 && distance < 15) {
+                    current_emotion = EMOTION_ANGRY;
+                    set_motors(0, 0); 
+                } else if (current_time - last_face_time > 10000) {
+                    current_emotion = EMOTION_SEARCHING;
+                    set_motors(0, 0); 
+                } else {
+                    current_emotion = EMOTION_HAPPY;
+                    track_face(); 
+                }
             }
 
             // 3. Trigger Screen Refresh on Emotion Change

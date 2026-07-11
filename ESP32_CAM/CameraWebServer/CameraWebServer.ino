@@ -291,6 +291,17 @@ void publishFaceData(int face_id, int x, int y) {
 #define BUTTON_PIN 13
 extern int led_duty; // Declared in app_httpd.cpp
 
+// Globals for Webserver Telemetry
+volatile int telemetry_co2 = 0;
+volatile int telemetry_tvoc = 0;
+volatile int telemetry_distance = 0;
+volatile int telemetry_emotion = 0;
+
+// Globals for Webserver WiFi Status
+char wifi_ssid_str[33] = "Connecting...";
+int wifi_rssi_val = -100;
+char wifi_ip_str[16] = "0.0.0.0";
+
 // Variables for button debouncing and state
 int lastButtonState = HIGH;
 unsigned long lastDebounceTime = 0;
@@ -541,6 +552,12 @@ void loop() {
         startIdx = nextComma + 1;
         int emotion = incoming.substring(startIdx).toInt();
 
+        // Update globals for web page telemetry
+        telemetry_co2 = co2;
+        telemetry_tvoc = tvoc;
+        telemetry_distance = dist;
+        telemetry_emotion = emotion;
+
         if (mqttClient.connected()) {
           char payload[128];
           snprintf(payload, sizeof(payload), "{\"co2\": %d, \"tvoc\": %d, \"distance\": %d, \"emotion\": %d}", co2, tvoc, dist, emotion);
@@ -565,6 +582,27 @@ void loop() {
     }
   }
   lastButtonState = reading;
+
+  // Update WiFi status globals for thread-safe access by webserver
+  static uint32_t last_wifi_check = 0;
+  if (millis() - last_wifi_check >= 2000) {
+    last_wifi_check = millis();
+    if (WiFi.status() == WL_CONNECTED) {
+      String current_ssid = WiFi.SSID();
+      current_ssid.replace("\"", "'");
+      strncpy(wifi_ssid_str, current_ssid.c_str(), sizeof(wifi_ssid_str) - 1);
+      wifi_ssid_str[sizeof(wifi_ssid_str) - 1] = '\0';
+      
+      wifi_rssi_val = WiFi.RSSI();
+      
+      IPAddress ip = WiFi.localIP();
+      snprintf(wifi_ip_str, sizeof(wifi_ip_str), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+    } else {
+      strcpy(wifi_ssid_str, "Disconnected");
+      wifi_rssi_val = -100;
+      strcpy(wifi_ip_str, "0.0.0.0");
+    }
+  }
 
   delay(10);
 }
