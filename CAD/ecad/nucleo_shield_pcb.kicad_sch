@@ -4638,17 +4638,6 @@
 			(embedded_fonts no)
 		)
 	)
-	(text "TODO"
-		(exclude_from_sim no)
-		(at 105.41 81.026 0)
-		(effects
-			(font
-				(size 2.54 2.54)
-				(color 255 9 6 1)
-			)
-		)
-		(uuid "8f255411-9a70-4113-b730-c49d36f60209")
-	)
 	(text "SGP30"
 		(exclude_from_sim no)
 		(at 84.582 117.094 0)
